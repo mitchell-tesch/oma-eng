@@ -1,0 +1,28 @@
+name: validate
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxml2-utils \
+            shellcheck \
+            libvirt-clients \
+            python3
+
+      - name: Run validate-config.sh
+        run: |
+          chmod +x scripts/validate-config.sh
+          scripts/validate-config.sh

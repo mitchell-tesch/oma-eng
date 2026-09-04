@@ -1,0 +1,186 @@
+# 10 — Office / Excel integration
+
+Once the VFIO CAD guest is running, you'll almost certainly want Excel
+alongside Rhino and Strand7. Engineering workflows depend on it —
+model input tables, load matrices, post-processing summaries, and
+the countless bits of automation that walk from a spreadsheet into a
+solver and back.
+
+This page decides *where* Excel lives, sizes RAM accordingly, and
+covers the licence + activation quirks specific to running Office in
+a VM. It's the last doc in the setup path because it depends on
+choices made earlier — you have to know how much RAM your guest is
+already using before you can size for Office.
+
+## Where to put Excel
+
+Three viable options:
+
+### A. Same VFIO CAD VM (recommended default)
+
+Install Excel (or the whole Microsoft 365 / Office 2021 bundle) inside
+the same Windows 11 guest that runs Rhino and Strand7. Nothing about
+the VM changes; Office is just another Windows app.
+
+**When to pick this:**
+- Any of your Rhino/Grasshopper/Strand7 scripts drive Excel via COM
+  (`Microsoft.Office.Interop.Excel`, `xlwings`, `pywin32
+  Dispatch("Excel.Application")`). COM is per-Windows-session — the
+  caller and Excel must share the same OS instance.
+- You want Excel to render on the passed-through Nvidia GPU (helps
+  with heavy dashboards, conditional formatting, big charts).
+- You want a single seamless Looking Glass window for all your
+  Windows work.
+
+**Cost:** RAM. Bump the guest to 24 GiB (this repo's default) or
+32 GiB if you routinely open large workbooks. The XML template
+[`configs/libvirt/windows-cad.xml`](../configs/libvirt/windows-cad.xml)
+is already set to 24 GiB. If you change it, remember to also change:
+
+- The `hugepages=N` value in `/boot/limine.conf`, or
+- The `vm.nr_hugepages` value in
+  [`configs/sysctl.d/99-vm-hugepages.conf`](../configs/sysctl.d/99-vm-hugepages.conf).
+
+### B. Omarchy's built-in `omarchy windows vm` (Dockur)
+
+Run Excel in the separate lightweight Windows VM Omarchy ships out of
+the box (*Install ▸ Windows* in the Omarchy menu, or
+`omarchy windows vm launch`).
+
+**When to pick this:**
+- You want a quick Office window that's available even when the CAD
+  VM is off.
+- You don't need COM automation between Excel and Rhino/Strand7.
+- You want Omarchy's clipboard/RDP integration to Just Work with no
+  extra config.
+
+**Cost:** A second Windows VM to licence, update, and populate. No GPU
+passthrough — fine for spreadsheets but limits chart rendering.
+
+You can absolutely run **both**: the built-in VM for casual Office
+sessions all day, the VFIO CAD VM only when you sit down to design.
+They're independent.
+
+### C. LibreOffice Calc or Excel for the Web
+
+Native Omarchy install (`sudo pacman -S libreoffice-fresh`) or open
+<https://www.office.com> in a browser.
+
+**When to pick this:**
+- Quick `.xlsx` viewing, casual edits, no VBA or COM.
+- You want zero Windows dependency in your Omarchy session.
+
+**Cost:** VBA macros don't run. Complex conditional formatting can
+render differently. Power Query works on the web version but not in
+LibreOffice.
+
+Most engineering shops end up with **A + C** — Excel in the CAD VM
+for real work, LibreOffice on Omarchy for opening drop-in
+attachments.
+
+## Installing Office in the VFIO guest
+
+Nothing special. From an admin PowerShell in the guest:
+
+**Microsoft 365 (recommended, subscription):**
+
+```powershell
+winget install --silent Microsoft.Office
+```
+
+Then sign in with your 365 account. Activation happens automatically;
+365 has no problem with VMs.
+
+**Office LTSC 2021 / 2024 (perpetual):**
+
+Use the Office Deployment Tool with an XML config for click-to-run
+install. Perpetual licences activate cleanly in the VFIO guest as
+long as the OS install itself is stable (activation is tied to the
+Windows install ID, which doesn't change on VM restart).
+
+**Avoid** older Office 2013/2016 perpetual licences in a VM if you
+can — they occasionally trigger reactivation after XML changes to the
+domain (CPU pinning, memory bumps).
+
+## Enable Excel's GPU rendering
+
+Because Excel sees the real Nvidia GPU here, turn on hardware
+graphics acceleration explicitly:
+
+*File ▸ Options ▸ Advanced ▸ Display* → **untick** *Disable
+hardware graphics acceleration*.
+
+Also in the Nvidia Control Panel (see doc 05 §3), add `EXCEL.EXE` to
+the program list and set *Power management mode = Prefer maximum
+performance*.
+
+## API dev: driving Excel from your engineering scripts
+
+Once Excel lives in the same session, this pattern works out of the
+box in both directions:
+
+**From RhinoCommon C# — dump object metadata:**
+
+```csharp
+using Excel = Microsoft.Office.Interop.Excel;
+
+var app  = new Excel.Application { Visible = true };
+var wb   = app.Workbooks.Add();
+var ws   = (Excel.Worksheet)wb.Worksheets[1];
+ws.Cells[1, 1] = "GUID";
+ws.Cells[1, 2] = "Volume";
+int row = 2;
+foreach (var brep in doc.Objects.OfType<Rhino.DocObjects.BrepObject>())
+{
+    ws.Cells[row, 1] = brep.Id.ToString();
+    ws.Cells[row, 2] = brep.BrepGeometry.GetVolume();
+    row++;
+}
+```
+
+Add a NuGet reference to `Microsoft.Office.Interop.Excel` (the
+version that ships with the Office you installed).
+
+**From Strand7 automation (Python via `xlwings`):**
+
+```python
+import xlwings as xw
+book = xw.Book()                          # new workbook
+sheet = book.sheets[0]
+sheet.range("A1").value = ["Node", "Rx", "Ry", "Rz"]
+for i, node in enumerate(nodes_of_interest, start=2):
+    reactions = read_reactions(node)      # your St7API wrapper
+    sheet.range(f"A{i}").value = [node, *reactions]
+book.save(r"C:\Users\Public\reactions.xlsx")
+```
+
+`xlwings` uses COM under the hood, so it needs Excel actually
+installed in the same VM — which we've now done.
+
+**Bidirectional integration for Grasshopper users:** the *Bumblebee*
+plugin gives you live Excel-cell reads/writes from Grasshopper
+components. Install it via *Rhino Package Manager* inside the guest.
+Same COM constraint applies — Excel must be in the same VM.
+
+## What isn't documented here
+
+- Excel-only automation without Rhino/Strand7 — that's just standard
+  Office VBA / xlwings work, no CAD context; the internet has it
+  covered.
+- OneDrive / SharePoint integration — works fine in the VM (it's just
+  Office 365), but slower over the guest's virtio-net than on
+  Omarchy directly. If you sync large volumes of files with
+  OneDrive, consider putting the OneDrive client on Omarchy
+  and exposing the folder to the guest via virtiofs.
+
+## Exit criteria
+
+- Excel opens in the guest, activated, no warnings.
+- *File ▸ Account ▸ About Excel* shows GPU hardware acceleration
+  enabled and the Nvidia device.
+- From Rhino's Python 3 component, `import xlwings; xw.Book()` opens
+  a new workbook in Excel.
+- Optional: [`omarchy windows vm launch`](https://learn.omacom.io/2/the-omarchy-manual/28-windows-vm)
+  starts the separate Office-only VM for casual use.
+
+Back to [README](../README.md).

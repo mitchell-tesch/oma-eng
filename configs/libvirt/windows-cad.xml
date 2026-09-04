@@ -1,0 +1,331 @@
+<!--
+    windows-cad.xml — libvirt domain template for the Windows 11 CAD/FEA guest.
+
+    EDIT every line tagged with "EDIT:" before defining this domain.
+
+    Define with:
+        virsh -c qemu:///system define configs/libvirt/windows-cad.xml
+        virsh -c qemu:///system start windows-cad
+
+    Layout:
+      - 24 GiB memory backed by 1 GiB hugepages (bump for big FEA / Office use)
+      - 12 vCPUs pinned to 6 physical cores + hyperthreads (adjust below)
+      - Q35 UEFI machine with OVMF, secure boot off (turn on later)
+      - virtio-scsi disk + virtio-net + virtio-serial + virtiofs share
+      - Nvidia dGPU + audio function passed through (EDIT: PCI addresses)
+      - IVSHMEM shared memory for Looking Glass
+      - Evdev keyboard/mouse passthrough with LEFTCTRL+RIGHTCTRL toggle
+      - SPICE + QXL for install-time display (Looking Glass takes over later)
+-->
+<domain type='kvm' xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'>
+  <name>windows-cad</name>
+  <!-- EDIT: uuidgen -->
+  <uuid>00000000-0000-0000-0000-000000000000</uuid>
+  <title>Rhino 8 + Strand7 R3 CAD/FEA guest</title>
+  <description>Windows 11 with Nvidia dGPU passthrough for CAD/FEA on Omarchy.</description>
+
+  <memory unit='KiB'>25165824</memory>
+  <currentMemory unit='KiB'>25165824</currentMemory>
+  <!-- Optional <memtune> block. libvirt on Arch/Omarchy accepts
+       <locked/> without an explicit hard_limit, but older libvirt
+       (< 5.0) refuses. If `virsh define` errors with
+       "cannot set memory hard_limit", uncomment and adjust — usually
+       set hard_limit slightly above the guest memory to leave room
+       for QEMU overhead.
+  <memtune>
+    <hard_limit unit='KiB'>27262976</hard_limit>
+    <soft_limit unit='KiB'>25165824</soft_limit>
+  </memtune>
+  -->
+  <memoryBacking>
+    <hugepages>
+      <page size='1' unit='G'/>
+    </hugepages>
+    <nosharepages/>
+    <locked/>
+  </memoryBacking>
+
+  <!-- Memory sizing:
+       * 16 GiB minimum (Rhino only, small Grasshopper defs)
+       * 24 GiB comfortable floor for Rhino + Strand7 + Excel/Office
+       * 32 GiB+ if you routinely open large FEA models with parallel
+         solvers, or big xlsx dashboards driven by Interop.Excel
+       Match the hugepages= kernel param in /boot/limine.conf to match:
+       16 GiB -> hugepages=16, 24 GiB -> hugepages=24, 32 GiB -> hugepages=32 -->
+
+  <!-- ============================================================
+       EXAMPLE vCPU count and pinning — INSPECT `lscpu -e` AND REWRITE
+       BEFORE USE. The numbers below are placeholder assignments that
+       almost certainly do NOT match your CPU topology.
+
+       General rules of thumb:
+         * Give the guest whole physical cores + their SMT/HT siblings,
+           not just half of each pair.
+         * Leave at least 2 physical cores for the host so Hyprland +
+           virtiofsd + Looking Glass don't starve.
+         * Keep all pinned vCPUs on the same NUMA node / CCD to avoid
+           cross-node memory hops.
+
+       Vendor-specific notes:
+         * INTEL hybrid P/E (12th gen+): pin to P-cores only for
+           deterministic clocks. `lscpu -e` shows CORE and MAXMHZ
+           columns; P-cores have the higher MAXMHZ. HT siblings share
+           the CORE column value.
+         * AMD RYZEN: keep pinned vCPUs on ONE CCD. `lscpu -e` shows
+           L3 boundaries; every distinct L3 index is a separate CCD.
+           A 7900X puts CCD0 on CPUs 0..5 + siblings 12..17 and
+           CCD1 on 6..11 + siblings 18..23.
+
+       Use `lstopo` (from the `hwloc` package) for a visual topology
+       map. Then edit the <vcpu> count and every <vcpupin> line below
+       to match your actual assignment.
+
+       The 6-core-x-2-thread block below is a syntactic placeholder;
+       rewrite it. If in doubt, start with 4 vCPUs pinned to two
+       physical cores (with HT siblings) and expand once the guest
+       is stable.
+       ============================================================ -->
+  <vcpu placement='static'>12</vcpu>
+  <cputune>
+    <vcpupin vcpu='0'  cpuset='2'/>
+    <vcpupin vcpu='1'  cpuset='10'/>
+    <vcpupin vcpu='2'  cpuset='3'/>
+    <vcpupin vcpu='3'  cpuset='11'/>
+    <vcpupin vcpu='4'  cpuset='4'/>
+    <vcpupin vcpu='5'  cpuset='12'/>
+    <vcpupin vcpu='6'  cpuset='5'/>
+    <vcpupin vcpu='7'  cpuset='13'/>
+    <vcpupin vcpu='8'  cpuset='6'/>
+    <vcpupin vcpu='9'  cpuset='14'/>
+    <vcpupin vcpu='10' cpuset='7'/>
+    <vcpupin vcpu='11' cpuset='15'/>
+    <emulatorpin cpuset='0-1'/>
+    <iothreadpin iothread='1' cpuset='0-1'/>
+  </cputune>
+
+  <iothreads>1</iothreads>
+
+  <os>
+    <!-- machine='pc-q35-8.2' pins the QEMU machine model to a specific
+         release. On Arch/Omarchy (rolling QEMU) this may print
+         "unsupported machine type pc-q35-8.2" a year or two after
+         checkout. If define fails with that error, either bump the
+         version to what your QEMU actually ships (list with
+         `qemu-system-x86_64 -M help | grep q35`) or drop the version
+         suffix so libvirt auto-picks the newest. -->
+    <type arch='x86_64' machine='pc-q35-8.2'>hvm</type>
+    <!-- EDIT: OVMF paths vary by distro. Arch: /usr/share/edk2-ovmf/x64/ -->
+    <loader readonly='yes' secure='no' type='pflash'>/usr/share/edk2-ovmf/x64/OVMF_CODE.fd</loader>
+    <nvram template='/usr/share/edk2-ovmf/x64/OVMF_VARS.fd'>/var/lib/libvirt/qemu/nvram/windows-cad_VARS.fd</nvram>
+    <boot dev='hd'/>
+    <boot dev='cdrom'/>
+    <bootmenu enable='yes' timeout='3000'/>
+  </os>
+
+  <features>
+    <acpi/>
+    <apic/>
+    <hyperv mode='custom'>
+      <relaxed state='on'/>
+      <vapic state='on'/>
+      <spinlocks state='on' retries='8191'/>
+      <vpindex state='on'/>
+      <synic state='on'/>
+      <stimer state='on'/>
+      <reset state='on'/>
+      <vendor_id state='on' value='KVMKVMKVM01'/>
+      <frequencies state='on'/>
+    </hyperv>
+    <kvm>
+      <hidden state='on'/>
+    </kvm>
+    <vmport state='off'/>
+    <ioapic driver='kvm'/>
+  </features>
+
+  <!-- CPU: host-passthrough exposes the real CPU to the guest (works
+       identically on Intel and AMD).
+       * topoext is an AMD-only feature that gives the guest correct
+         CCX/CCD topology info. 'optional' == include if the host has
+         it, ignore otherwise. Safe on both Intel and AMD hosts.
+       * hypervisor bit is masked so Windows doesn't nag about running
+         under a hypervisor.
+       Pinning topology below assumes 6 cores x 2 threads = 12 vCPUs.
+       Intel P/E hybrid CPUs (12th gen+): pin to P-cores only for
+       predictable perf; ignore E-cores for the VM.
+       AMD Ryzen: keep all pinned vCPUs on the same CCD to avoid
+       inter-CCD memory hops. `lscpu -e` shows the CCD/L3 boundaries. -->
+  <cpu mode='host-passthrough' check='none' migratable='off'>
+    <topology sockets='1' dies='1' cores='6' threads='2'/>
+    <cache mode='passthrough'/>
+    <feature policy='optional' name='topoext'/>
+    <feature policy='disable' name='hypervisor'/>
+  </cpu>
+
+  <clock offset='localtime'>
+    <timer name='rtc'      tickpolicy='catchup'/>
+    <timer name='pit'      tickpolicy='delay'/>
+    <timer name='hpet'     present='no'/>
+    <timer name='hypervclock' present='yes'/>
+    <timer name='tsc' present='yes' mode='native'/>
+  </clock>
+
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>destroy</on_crash>
+  <pm>
+    <suspend-to-mem enabled='no'/>
+    <suspend-to-disk enabled='no'/>
+  </pm>
+
+  <devices>
+    <emulator>/usr/bin/qemu-system-x86_64</emulator>
+
+    <!-- virtio-scsi controller with dedicated iothread for disk I/O -->
+    <controller type='scsi' index='0' model='virtio-scsi'>
+      <driver iothread='1' queues='4'/>
+    </controller>
+
+    <!-- Primary disk -->
+    <!-- EDIT: source file path -->
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' cache='none' io='native' discard='unmap'/>
+      <source file='/var/lib/libvirt/images/windows-cad.qcow2'/>
+      <target dev='sda' bus='scsi'/>
+      <boot order='1'/>
+    </disk>
+
+    <!-- Windows 11 installer ISO (remove after install) -->
+    <!-- EDIT: source file path -->
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='/home/CHANGEME/vm-iso/Win11_23H2_English_x64.iso'/>
+      <target dev='sdb' bus='sata'/>
+      <readonly/>
+      <boot order='2'/>
+    </disk>
+
+    <!-- Virtio driver ISO (keep attached, used for virtiofs guest agent too) -->
+    <!-- EDIT: source file path -->
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='/home/CHANGEME/vm-iso/virtio-win.iso'/>
+      <target dev='sdc' bus='sata'/>
+      <readonly/>
+    </disk>
+
+    <!-- Network: NAT'd libvirt default network -->
+    <interface type='network'>
+      <source network='default'/>
+      <model type='virtio'/>
+    </interface>
+
+    <!-- Serial + agent -->
+    <serial type='pty'><target type='isa-serial' port='0'/></serial>
+    <console type='pty'><target type='serial' port='0'/></console>
+    <channel type='unix'>
+      <source mode='bind'/>
+      <target type='virtio' name='org.qemu.guest_agent.0'/>
+    </channel>
+    <channel type='spicevmc'>
+      <target type='virtio' name='com.redhat.spice.0'/>
+    </channel>
+
+    <!-- TPM 2.0 emulated (Windows 11 requirement) -->
+    <tpm model='tpm-crb'>
+      <backend type='emulator' version='2.0'/>
+    </tpm>
+
+    <!-- IVSHMEM shared memory for Looking Glass -->
+    <shmem name='looking-glass'>
+      <model type='ivshmem-plain'/>
+      <size unit='M'>128</size>
+    </shmem>
+
+    <!-- Virtiofs share: exposes host src/ directly into guest as tag 'src' -->
+    <!-- EDIT: source dir absolute path -->
+    <filesystem type='mount' accessmode='passthrough'>
+      <driver type='virtiofs' queue='1024'/>
+      <binary path='/usr/lib/virtiofsd'>
+        <cache mode='always'/>
+      </binary>
+      <source dir='/home/CHANGEME/src/rhino-omarchy/src'/>
+      <target dir='src'/>
+    </filesystem>
+
+    <!-- Nvidia dGPU passthrough — VGA function -->
+    <!-- EDIT: source PCI address matches your dGPU (from lspci -D) -->
+    <!-- Guest-side <address> is intentionally omitted; libvirt places
+         the device on a suitable pcie-root-port at define time. If you
+         need pinned guest topology, add an explicit
+         <controller type='pci' index='5' model='pcie-root-port'/> above
+         and re-add matching <address bus='0x05' slot='0x00'.../> lines
+         to both hostdev blocks (VGA on function 0x0, audio on 0x1,
+         with multifunction='on' on the VGA block). -->
+    <hostdev mode='subsystem' type='pci' managed='yes'>
+      <source>
+        <address domain='0x0000' bus='0x01' slot='0x00' function='0x0'/>
+      </source>
+      <rom bar='off'/>
+    </hostdev>
+
+    <!-- Nvidia dGPU passthrough — Audio function (HDMI audio) -->
+    <!-- EDIT: source PCI address (usually same bus/slot as VGA, function 1) -->
+    <hostdev mode='subsystem' type='pci' managed='yes'>
+      <source>
+        <address domain='0x0000' bus='0x01' slot='0x00' function='0x1'/>
+      </source>
+    </hostdev>
+
+    <!-- Optional: HASP / dongle passthrough for licenced apps.
+         Each licence dongle appears as a separate USB device on the
+         Omarchy host (`lsusb`). Uncomment one block per dongle and
+         fill in its vendor/product ID. Common vendors:
+           * Sentinel HASP  vendor=0x0529   (Strand7, CSi ETABS/SAP)
+           * WIBU CmStick   vendor=0x064f   (SpaceGass some builds)
+         See docs/07-strand7-setup.md and docs/11-etabs-and-spacegass.md
+         for the licence-runtime setup inside the guest.
+         Network licence servers (Reprise for CSi, hasplm, etc.) are an
+         alternative — the guest reaches them over virtio-net and no
+         passthrough is required. -->
+    <!--
+    <hostdev mode='subsystem' type='usb' managed='yes'>
+      <source>
+        <vendor  id='0x0529'/>
+        <product id='0x0001'/>
+      </source>
+    </hostdev>
+    -->
+    <!-- More dongles: duplicate the block above with different IDs. -->
+
+    <!-- Install-time SPICE display + QXL video. Once Looking Glass is set
+         up, you can leave both in place: QXL stays disabled in Device
+         Manager, SPICE is used for occasional recovery. -->
+    <graphics type='spice' autoport='yes'>
+      <listen type='address' address='127.0.0.1'/>
+      <image compression='off'/>
+      <gl enable='no'/>
+    </graphics>
+    <video>
+      <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1' primary='yes'/>
+    </video>
+
+    <!-- Sound: intel-hda so Windows audio works before Nvidia HDMI takes over -->
+    <sound model='ich9'/>
+
+    <memballoon model='virtio'/>
+  </devices>
+
+  <!--
+      Evdev keyboard+mouse passthrough with LEFT-CTRL+RIGHT-CTRL toggle.
+      Native libvirt XML support for evdev is limited, so we drop into qemu:
+      commandline. EDIT the by-id paths for your actual keyboard/mouse.
+      Enumerate with: ls -la /dev/input/by-id/
+  -->
+  <qemu:commandline>
+    <qemu:arg value='-object'/>
+    <qemu:arg value='input-linux,id=kbd1,evdev=/dev/input/by-id/usb-CHANGEME-event-kbd,grab_all=on,repeat=on'/>
+    <qemu:arg value='-object'/>
+    <qemu:arg value='input-linux,id=mouse1,evdev=/dev/input/by-id/usb-CHANGEME-event-mouse'/>
+  </qemu:commandline>
+</domain>

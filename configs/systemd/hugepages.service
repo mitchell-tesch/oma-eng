@@ -1,0 +1,15 @@
+[Unit]
+Description=Reserve 1GiB hugepages for the CAD VM
+DefaultDependencies=no
+After=local-fs.target
+Before=libvirtd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Adjust the number to match your VM memory allocation (see doc 02 § 2).
+ExecStart=/bin/sh -c 'echo 24 > /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages'
+ExecStop=/bin/sh -c 'echo 0 > /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages'
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net7.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <TargetExt>.gha</TargetExt>
+    <NoWarn>NU1701</NoWarn>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>HelloGh</AssemblyName>
+    <RootNamespace>HelloGh</RootNamespace>
+    <Version>0.1.0</Version>
+    <Title>Hello Grasshopper (rhino-omarchy)</Title>
+    <Description>Smallest possible Grasshopper 1 component — proves the Omarchy dev workflow.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RhinoCommon" Version="8.*-*" ExcludeAssets="runtime" />
+    <PackageReference Include="Grasshopper"  Version="8.*-*" ExcludeAssets="runtime" />
+  </ItemGroup>
+</Project>

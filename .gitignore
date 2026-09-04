@@ -1,0 +1,43 @@
+# Build artefacts
+bin/
+obj/
+*.dll
+*.pdb
+*.exe
+*.rhp
+*.gha
+
+# Editors / OS
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+Thumbs.db
+.DS_Store
+
+# VM artefacts (never commit these)
+*.qcow2
+*.qcow
+*.raw
+*.iso
+*.img
+*.vmdk
+looking-glass-B*/
+looking-glass.tar.gz
+
+# Personal secrets or IDs — these are host-specific and must not be shared
+configs/**/*.local
+*.local.xml
+*.local.conf
+license/
+*.lic
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node/misc
+node_modules/

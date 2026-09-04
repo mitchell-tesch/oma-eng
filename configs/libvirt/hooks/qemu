@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# /etc/libvirt/hooks/qemu — swap the CPU governor when the CAD guest
+# starts and stops. Copy this file to /etc/libvirt/hooks/qemu (mkdir the
+# parent if needed), chmod +x, and libvirtd will invoke it on every
+# guest state change. See:
+#   https://libvirt.org/hooks.html
+#
+# Wants `scripts/cpu-governor` installed at /usr/local/bin/cpu-governor.
+#
+# Only acts on the 'windows-cad' domain so unrelated guests are left
+# alone. Adjust the domain name if you renamed it.
+
+domain="$1"
+action="$2"
+
+[[ "$domain" != "windows-cad" ]] && exit 0
+
+case "$action" in
+    prepare)
+        /usr/local/bin/cpu-governor performance
+        ;;
+    release)
+        /usr/local/bin/cpu-governor schedutil
+        ;;
+esac
+
+exit 0

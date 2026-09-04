@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>HelloSpaceGass</AssemblyName>
+    <RootNamespace>HelloSpaceGass</RootNamespace>
+    <Version>0.1.0</Version>
+    <Title>Hello SPACE GASS (rhino-omarchy)</Title>
+    <Description>Smallest possible SPACE GASS 14.5+ REST API sample via the official SDK.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SpaceGassApi" Version="14.50.165" />
+  </ItemGroup>
+</Project>

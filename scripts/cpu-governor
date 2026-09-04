@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# cpu-governor — set the CPU frequency governor system-wide.
+#
+# Usage:
+#     sudo cpu-governor performance     # for CAD/FEA use
+#     sudo cpu-governor powersave       # for idle
+#     sudo cpu-governor schedutil        # Arch default
+#     sudo cpu-governor status           # show current
+#
+# Wire into libvirt hooks (recommended): drop this snippet into
+# /etc/libvirt/hooks/qemu (make it executable) so the governor
+# swaps automatically when the CAD VM starts/stops:
+#
+#     #!/usr/bin/env bash
+#     domain="$1"; action="$2"
+#     [[ "$domain" != "windows-cad" ]] && exit 0
+#     case "$action" in
+#         prepare)  /usr/local/bin/cpu-governor performance ;;
+#         release)  /usr/local/bin/cpu-governor schedutil ;;
+#     esac
+
+set -euo pipefail
+
+cmd="${1:-status}"
+
+case "$cmd" in
+    status)
+        for c in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+            printf "%-40s %s\n" "$c" "$(cat "$c")"
+        done | column -t
+        exit 0
+        ;;
+    performance|powersave|schedutil|ondemand|conservative|userspace)
+        gov="$cmd" ;;
+    *)
+        echo "Unknown governor: $cmd" >&2
+        echo "Valid: performance, powersave, schedutil, ondemand, conservative, userspace, status" >&2
+        exit 2
+        ;;
+esac
+
+if [[ $EUID -ne 0 ]]; then
+    echo "This command must run as root." >&2
+    exit 1
+fi
+
+for c in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+    echo "$gov" > "$c"
+done
+
+echo "Set all CPUs to governor: $gov"

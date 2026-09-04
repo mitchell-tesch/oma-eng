@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net7.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <TargetExt>.rhp</TargetExt>
+    <NoWarn>NU1701</NoWarn>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>HelloRhino</AssemblyName>
+    <RootNamespace>HelloRhino</RootNamespace>
+    <Version>0.1.0</Version>
+    <Title>Hello Rhino (rhino-omarchy)</Title>
+    <Company>rhino-omarchy</Company>
+    <Description>Smallest possible Rhino 8 plugin — proves the Omarchy dev workflow.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RhinoCommon" Version="8.*-*" ExcludeAssets="runtime" />
+  </ItemGroup>
+</Project>
