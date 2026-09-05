@@ -5,6 +5,15 @@
 // v19+ install in the guest — CSi keeps the OAPI shape stable across
 // releases.
 //
+// Signature note: late-bound `dynamic` COM invocation does NOT honour
+// the type-library default parameters that a `<Reference>`-linked
+// interop assembly would fill in for you. Every OAPI call here passes
+// its full argument list explicitly. If you retarget to an older
+// ETABS (v19/v20) or SAP2000, cross-check each signature against
+// the shipped `API\CSiAPIv1.chm` help file inside the install — CSi
+// occasionally adds an argument at the tail of a method between
+// major versions.
+//
 // What it does:
 //   1. Launches a fresh ETABS instance via COM.
 //   2. Creates a new blank steel-units model.
@@ -22,7 +31,7 @@
 // Prereq: ETABS 22 installed and licensed in the guest.
 //
 // Run:
-//   cd Z:\src\rhino-omarchy\src\etabs-api\csharp\HelloETABS
+//   cd Z:\src\oma-eng\src\etabs-api\csharp\HelloETABS
 //   dotnet run -c Release
 //
 // The ETABS window opens (Visible = true), builds and analyses the
@@ -51,7 +60,12 @@ internal static class Program
 
         try
         {
-            Check(etabs.ApplicationStart(), "ApplicationStart");
+            // ApplicationStart(eUnits, bool Visible, string FileName)
+            // Explicit args because dynamic COM invocation does NOT
+            // honour type-lib default parameters — every OAPI call in
+            // this file has to pass the full argument list.
+            // Units 3 == eUnits.kip_in_F.
+            Check(etabs.ApplicationStart(3, true, ""), "ApplicationStart");
             dynamic sap = etabs.SapModel;
 
             // Units: kip_in_F = 3 in the eUnits enum. Value `1` is
@@ -61,36 +75,47 @@ internal static class Program
             Check(sap.File.NewBlank(), "File.NewBlank");
 
             // --- Joints -------------------------------------------------
+            // PointObj.AddCartesian(X, Y, Z, ref Name, UserName, CSys,
+            //                        MergeOff, MergeNumber)
+            // 8 args required — the last three have IDL defaults that
+            // late-bound COM ignores.
             string basePt = "";
             string topPt  = "";
-            Check(sap.PointObj.AddCartesian(0.0,   0.0,   0.0, ref basePt, ""),
+            Check(sap.PointObj.AddCartesian(0.0, 0.0,   0.0, ref basePt,
+                                            "", "Global", false, 0),
                   "AddCartesian(base)");
-            Check(sap.PointObj.AddCartesian(0.0,   0.0, 144.0, ref topPt,  ""),
+            Check(sap.PointObj.AddCartesian(0.0, 0.0, 144.0, ref topPt,
+                                            "", "Global", false, 0),
                   "AddCartesian(top)");     // 144 in = 12 ft column
 
             Console.WriteLine($"Joints created: base='{basePt}', top='{topPt}'");
 
             // --- Frame element ------------------------------------------
-            string frameName = "";
-            // AddByPoint(Point1, Point2, ref Name, PropName, UserName)
+            // FrameObj.AddByPoint(Point1, Point2, ref Name, PropName, UserName)
             // PropName "Default" uses the first available frame section.
+            string frameName = "";
             Check(sap.FrameObj.AddByPoint(basePt, topPt, ref frameName,
                                           "Default", ""),
                   "FrameObj.AddByPoint");
             Console.WriteLine($"Frame added: '{frameName}'");
 
             // --- Restraint: fully fixed base ----------------------------
+            // PointObj.SetRestraint(Name, ref bool[6], eItemType)
             // 6-boolean array: [Ux, Uy, Uz, Rx, Ry, Rz]
+            // ItemType 0 == Objects (act on the named point only).
             bool[] fixedAll = { true, true, true, true, true, true };
-            Check(sap.PointObj.SetRestraint(basePt, ref fixedAll),
+            Check(sap.PointObj.SetRestraint(basePt, ref fixedAll, 0),
                   "PointObj.SetRestraint");
 
             // --- Load pattern + point load ------------------------------
-            // LoadPatterns.Add(name, type, selfWeightMultiplier, addLoadCase)
+            // LoadPatterns.Add(Name, eLoadPatternType, SelfWTMultiplier,
+            //                   AddLoadCase)
             // type 1 == DEAD in CSi's eLoadPatternType.
             Check(sap.LoadPatterns.Add("DEAD", 1, 0.0, true),
                   "LoadPatterns.Add(DEAD)");
 
+            // PointObj.SetLoadForce(Name, LoadPat, ref double[6],
+            //                        Replace, CSys, eItemType)
             // Apply 10 kip horizontal load at the top joint in +X.
             double[] force = { 10.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
             Check(sap.PointObj.SetLoadForce(topPt, "DEAD", ref force,

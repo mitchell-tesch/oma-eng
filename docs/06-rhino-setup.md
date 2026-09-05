@@ -106,7 +106,7 @@ Packages* entry (label wording depends on Rhino 8 version).
   anywhere; but debug requires Rhino running in the guest):
 
   ```powershell
-  cd Z:\src\rhino-omarchy\src\rhino-plugin
+  cd Z:\src\oma-eng\src\rhino-plugin
   dotnet build -c Debug
   ```
 

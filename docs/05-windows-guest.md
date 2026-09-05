@@ -123,7 +123,7 @@ From the Omarchy host:
 
 ```bash
 code --install-extension ms-vscode-remote.remote-ssh
-code --remote ssh-remote+windows-cad ~/src/rhino-omarchy/src
+code --remote ssh-remote+windows-cad ~/src/oma-eng/src
 ```
 
 On the first connect, VS Code installs the remote server into the guest

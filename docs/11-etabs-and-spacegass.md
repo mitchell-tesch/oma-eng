@@ -143,7 +143,7 @@ passthrough needed.
 ## Installing ETABS
 
 1. Download the ETABS installer from CSi's client portal to the
-   Omarchy host, drop into `~/src/rhino-omarchy/src/vendor/`, and
+   Omarchy host, drop into `~/src/oma-eng/src/vendor/`, and
    it appears at `Z:\vendor\` in the guest via virtiofs.
 2. Run the installer in the guest. Accept defaults.
 3. Install the Sentinel HASP runtime if not already present.
@@ -170,7 +170,7 @@ Use **SPACE GASS 14.5 or later** — earlier releases don't ship the
 REST API that the samples in this repo target.
 
 1. Download from the licensed-users page on spacegass.com to the host,
-   drop into `~/src/rhino-omarchy/src/vendor/`, run from `Z:\vendor\`.
+   drop into `~/src/oma-eng/src/vendor/`, run from `Z:\vendor\`.
 2. If your licence is dongle-based, install the dongle runtime (Sentinel
    HASP or CodeMeter/WIBU depending on your dongle vintage — the
    installer usually prompts).

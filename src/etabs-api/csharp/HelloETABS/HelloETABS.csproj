@@ -10,7 +10,7 @@
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
     <Version>0.1.0</Version>
-    <Title>Hello ETABS 22 (rhino-omarchy)</Title>
+    <Title>Hello ETABS 22 (oma-eng)</Title>
     <Description>Smallest possible ETABS 22 OAPI sample via late-bound COM.</Description>
   </PropertyGroup>
 

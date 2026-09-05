@@ -19,8 +19,10 @@
 -->
 <domain type='kvm' xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'>
   <name>windows-cad</name>
-  <!-- EDIT: uuidgen -->
-  <uuid>00000000-0000-0000-0000-000000000000</uuid>
+  <!-- <uuid> intentionally omitted: libvirt auto-generates one at
+       `virsh define` time. If you need to pin the UUID for some reason
+       (e.g. reproducing a licence lock or a Windows activation ID),
+       add the element back and generate a value with `uuidgen`. -->
   <title>Rhino 8 + Strand7 R3 CAD/FEA guest</title>
   <description>Windows 11 with Nvidia dGPU passthrough for CAD/FEA on Omarchy.</description>
 
@@ -54,56 +56,70 @@
        16 GiB -> hugepages=16, 24 GiB -> hugepages=24, 32 GiB -> hugepages=32 -->
 
   <!-- ============================================================
-       EXAMPLE vCPU count and pinning — INSPECT `lscpu -e` AND REWRITE
-       BEFORE USE. The numbers below are placeholder assignments that
-       almost certainly do NOT match your CPU topology.
+       vCPU count + pinning — MUST BE FILLED IN BEFORE `virsh define`.
 
-       General rules of thumb:
-         * Give the guest whole physical cores + their SMT/HT siblings,
-           not just half of each pair.
-         * Leave at least 2 physical cores for the host so Hyprland +
-           virtiofsd + Looking Glass don't starve.
+       This block is intentionally COMMENTED OUT so the domain fails
+       to define with a clear "vcpu is required" error until you paste
+       in a topology that matches your host. A placeholder pinning
+       that "works" but targets the wrong host CPUs is a very quiet
+       failure mode — the guest runs, but on cores the host also
+       uses, and everything stutters under CAD/FEA load.
+
+       The easiest way to get a correct block for THIS host is to run
+       scripts/detect-host.sh with the vcpupin flag (see the script's
+       help output). It walks live `lscpu -e` output, reserves 2
+       physical cores for Omarchy + Hyprland + virtiofsd + Looking
+       Glass, and prints a ready-to-paste vcpu + cputune + iothreads
+       block for the rest. Paste the output over this comment.
+
+       General rules of thumb if you're writing it by hand instead:
+         * Give the guest whole physical cores + their SMT/HT
+           siblings, not just half of each pair.
+         * Leave at least 2 physical cores for the host so Hyprland
+           and virtiofsd and Looking Glass don't starve.
          * Keep all pinned vCPUs on the same NUMA node / CCD to avoid
            cross-node memory hops.
 
        Vendor-specific notes:
          * INTEL hybrid P/E (12th gen+): pin to P-cores only for
            deterministic clocks. `lscpu -e` shows CORE and MAXMHZ
-           columns; P-cores have the higher MAXMHZ. HT siblings share
-           the CORE column value.
+           columns; P-cores have the higher MAXMHZ. HT siblings
+           share the CORE column value.
          * AMD RYZEN: keep pinned vCPUs on ONE CCD. `lscpu -e` shows
            L3 boundaries; every distinct L3 index is a separate CCD.
            A 7900X puts CCD0 on CPUs 0..5 + siblings 12..17 and
            CCD1 on 6..11 + siblings 18..23.
 
        Use `lstopo` (from the `hwloc` package) for a visual topology
-       map. Then edit the <vcpu> count and every <vcpupin> line below
-       to match your actual assignment.
+       map.
 
-       The 6-core-x-2-thread block below is a syntactic placeholder;
-       rewrite it. If in doubt, start with 4 vCPUs pinned to two
-       physical cores (with HT siblings) and expand once the guest
-       is stable.
+       Example only — do NOT paste this literal block. The cpuset
+       values below are a syntactic sample for a 6-cores-x-2-threads
+       host that reserves cores 0 and 1 for Omarchy. Almost every
+       real host needs different numbers. XML would not allow the
+       vcpu/cputune elements inside the comment, so they are shown
+       here as pseudo-XML: the outer angle brackets have been swapped
+       for square brackets so this comment stays well-formed.
+
+       [vcpu placement='static']12[/vcpu]
+       [cputune]
+         [vcpupin vcpu='0'  cpuset='2']
+         [vcpupin vcpu='1'  cpuset='10']
+         [vcpupin vcpu='2'  cpuset='3']
+         [vcpupin vcpu='3'  cpuset='11']
+         [vcpupin vcpu='4'  cpuset='4']
+         [vcpupin vcpu='5'  cpuset='12']
+         [vcpupin vcpu='6'  cpuset='5']
+         [vcpupin vcpu='7'  cpuset='13']
+         [vcpupin vcpu='8'  cpuset='6']
+         [vcpupin vcpu='9'  cpuset='14']
+         [vcpupin vcpu='10' cpuset='7']
+         [vcpupin vcpu='11' cpuset='15']
+         [emulatorpin cpuset='0-1']
+         [iothreadpin iothread='1' cpuset='0-1']
+       [/cputune]
+       [iothreads]1[/iothreads]
        ============================================================ -->
-  <vcpu placement='static'>12</vcpu>
-  <cputune>
-    <vcpupin vcpu='0'  cpuset='2'/>
-    <vcpupin vcpu='1'  cpuset='10'/>
-    <vcpupin vcpu='2'  cpuset='3'/>
-    <vcpupin vcpu='3'  cpuset='11'/>
-    <vcpupin vcpu='4'  cpuset='4'/>
-    <vcpupin vcpu='5'  cpuset='12'/>
-    <vcpupin vcpu='6'  cpuset='5'/>
-    <vcpupin vcpu='7'  cpuset='13'/>
-    <vcpupin vcpu='8'  cpuset='6'/>
-    <vcpupin vcpu='9'  cpuset='14'/>
-    <vcpupin vcpu='10' cpuset='7'/>
-    <vcpupin vcpu='11' cpuset='15'/>
-    <emulatorpin cpuset='0-1'/>
-    <iothreadpin iothread='1' cpuset='0-1'/>
-  </cputune>
-
-  <iothreads>1</iothreads>
 
   <os>
     <!-- machine='pc-q35-8.2' pins the QEMU machine model to a specific
@@ -249,7 +265,7 @@
       <binary path='/usr/lib/virtiofsd'>
         <cache mode='always'/>
       </binary>
-      <source dir='/home/CHANGEME/src/rhino-omarchy/src'/>
+      <source dir='/home/CHANGEME/src/oma-eng/src'/>
       <target dir='src'/>
     </filesystem>
 

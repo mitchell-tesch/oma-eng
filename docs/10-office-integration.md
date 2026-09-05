@@ -176,11 +176,13 @@ Same COM constraint applies — Excel must be in the same VM.
 ## Exit criteria
 
 - Excel opens in the guest, activated, no warnings.
-- *File ▸ Account ▸ About Excel* shows GPU hardware acceleration
-  enabled and the Nvidia device.
+- *File ▸ Options ▸ Advanced ▸ Display* has *Disable hardware
+  graphics acceleration* **unticked**, and Excel's viewport interacts
+  with the Nvidia GPU under load (visible in `nvidia-smi` running in
+  the guest).
 - From Rhino's Python 3 component, `import xlwings; xw.Book()` opens
   a new workbook in Excel.
-- Optional: [`omarchy windows vm launch`](https://learn.omacom.io/2/the-omarchy-manual/28-windows-vm)
+- Optional: [`omarchy windows vm launch`](https://omarchy.org/manual/windows-vm)
   starts the separate Office-only VM for casual use.
 
 Back to [README](../README.md).

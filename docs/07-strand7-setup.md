@@ -52,7 +52,7 @@ samples in this repo default to that path — set the `STRAND7_DIR`
 environment variable to override.
 
 If your Strand7 installer is on the Omarchy host, drop it into
-`~/src/rhino-omarchy/src/vendor/` and it appears at `Z:\vendor\` in the
+`~/src/oma-eng/src/vendor/` and it appears at `Z:\vendor\` in the
 guest. Run it from there.
 
 ## 3. Verify graphics
@@ -124,7 +124,7 @@ linear-static solver (which will stop cleanly on an empty model — that's
 fine for a smoke test), closes the file, and releases. From the guest:
 
 ```powershell
-py Z:\src\rhino-omarchy\src\strand7-api\python\hello_strand7.py
+py Z:\src\oma-eng\src\strand7-api\python\hello_strand7.py
 ```
 
 Standard-library only — `ctypes` ships with Python, no `pip install`
@@ -134,12 +134,12 @@ needed. If the script exits with `St7API.dll not found`, check the
 ## 7. C# smoke test
 
 Sample at
-[`src/strand7-api/csharp/HelloStrand7.cs`](../src/strand7-api/csharp/HelloStrand7.cs).
+[`src/strand7-api/csharp/HelloStrand7/HelloStrand7.cs`](../src/strand7-api/csharp/HelloStrand7/HelloStrand7.cs).
 Straight P/Invoke against the DLL — no interop assembly to generate.
 Build and run:
 
 ```powershell
-cd Z:\src\rhino-omarchy\src\strand7-api\csharp
+cd Z:\src\oma-eng\src\strand7-api\csharp\HelloStrand7
 dotnet build -c Release
 dotnet run -c Release
 ```

@@ -32,7 +32,7 @@ target ETABS build.
 ## Run
 
 ```powershell
-cd Z:\src\rhino-omarchy\src\etabs-api\csharp\HelloETABS
+cd Z:\src\oma-eng\src\etabs-api\csharp\HelloETABS
 dotnet run -c Release
 ```
 

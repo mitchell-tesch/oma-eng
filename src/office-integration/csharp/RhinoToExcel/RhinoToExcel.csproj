@@ -11,7 +11,7 @@
     <AssemblyName>RhinoToExcel</AssemblyName>
     <RootNamespace>RhinoToExcel</RootNamespace>
     <Version>0.1.0</Version>
-    <Title>Rhino → Excel (rhino-omarchy)</Title>
+    <Title>Rhino → Excel (oma-eng)</Title>
     <Description>Dumps Rhino document object metadata to a new Excel workbook via late-bound COM.</Description>
   </PropertyGroup>
 

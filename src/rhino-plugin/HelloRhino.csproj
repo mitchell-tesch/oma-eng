@@ -11,8 +11,8 @@
     <AssemblyName>HelloRhino</AssemblyName>
     <RootNamespace>HelloRhino</RootNamespace>
     <Version>0.1.0</Version>
-    <Title>Hello Rhino (rhino-omarchy)</Title>
-    <Company>rhino-omarchy</Company>
+    <Title>Hello Rhino (oma-eng)</Title>
+    <Company>oma-eng</Company>
     <Description>Smallest possible Rhino 8 plugin — proves the Omarchy dev workflow.</Description>
   </PropertyGroup>
 

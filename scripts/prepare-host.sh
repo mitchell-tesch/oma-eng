@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # prepare-host.sh — idempotently prepare an Omarchy (Arch) host for the
-# rhino-omarchy VFIO Windows guest.
+# oma-eng VFIO Windows guest.
 #
 # Does:
 #   1. Installs the QEMU/libvirt/OVMF stack.
@@ -122,7 +122,7 @@ fi
 
 echo "==> Configs"
 install_file "$REPO_ROOT/configs/modprobe.d/vfio.conf"       /etc/modprobe.d/vfio.conf
-install_file "$REPO_ROOT/configs/mkinitcpio.d/vfio.conf"     /etc/mkinitcpio.conf.d/vfio.conf 2>/dev/null || true
+install_file "$REPO_ROOT/configs/mkinitcpio.d/vfio.conf"     /etc/mkinitcpio.conf.d/vfio.conf
 install_file "$REPO_ROOT/configs/sysctl.d/99-vm-hugepages.conf" /etc/sysctl.d/99-vm-hugepages.conf
 
 # The mkinitcpio drop-in above uses MODULES+= so it's additive. On

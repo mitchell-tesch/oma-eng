@@ -39,20 +39,36 @@ $EDITOR /tmp/windows-cad.xml
 Placeholders to change (search for `EDIT:` for XML-comment markers and
 `CHANGEME` for path strings — both are used in the template):
 
-- **UUID** — generate one: `uuidgen`.
+- **UUID** — the template omits `<uuid>` deliberately; libvirt
+  auto-generates one at `virsh define` time. If you need to pin the
+  UUID (licence lock, Windows activation ID) add it back with
+  `uuidgen`.
 - **Memory** — must match what you reserved in hugepages. Repo default
   is 24 GiB (Rhino + Strand7 + Excel/Office). Use 16 GiB for Rhino-only
   work, 32 GiB+ for heavy FEA or large Excel dashboards. See
   [10 — Office integration](10-office-integration.md).
-- **CPU pinning** — pick physical cores/threads to pin. Rule of thumb:
-  give the guest a whole CCX / P-core cluster and leave at least 2 physical
-  cores for the host. Use `lstopo` or `lscpu -e` to see topology.
+- **CPU pinning** — the XML template ships with the `<vcpu>` and
+  `<cputune>` block deliberately commented out so `virsh define`
+  won't accept a placeholder that mis-pins to your host's cores.
+  Generate a correct block for your machine and paste it in:
+
+  ```bash
+  scripts/detect-host.sh --vcpupin
+  ```
+
+  That walks live `lscpu -e` output, reserves 2 physical cores for
+  Omarchy, and prints a ready-to-paste `<vcpu>` + `<cputune>` +
+  `<iothreads>` block. Verify with `lstopo` (`hwloc` package) if
+  you want a visual topology map before pasting. Rule of thumb:
+  give the guest whole physical cores + their SMT/HT siblings on the
+  same CCX / P-core cluster, and leave at least 2 physical cores for
+  the host.
 - **PCI addresses of the Nvidia dGPU** — from `lspci -nn -D`. Both the
   VGA function (`.0`) and the audio function (`.1`).
 - **Disk source path** — to the qcow2 you just created.
 - **ISO paths** — the Windows ISO and virtio-win.iso for install.
 - **Virtiofs source** — set to the absolute path of `src/` in this
-  cloned repo, e.g. `/home/mitchell/src/rhino-omarchy/src`.
+  cloned repo, e.g. `/home/mitchell/src/oma-eng/src`.
 
 ## 4. Define, autostart the network, and start
 
@@ -87,7 +103,7 @@ Log in, then from the virtio-win ISO run:
   balloon, serial, viofs (virtiofs), qxldod display.
 - Reboot.
 
-You should now see `Z:` in Explorer pointing at `src/rhino-omarchy/src`
+You should now see `Z:` in Explorer pointing at `src/oma-eng/src`
 on the host. If you don't, see [09 — Troubleshooting](09-troubleshooting.md)
 *virtiofs share doesn't appear*.
 

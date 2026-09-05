@@ -1,8 +1,9 @@
-# rhino-omarchy
+# oma-eng
 
-Running **Rhino 8**, **Strand7 R3**, **CSi ETABS 22**, **SpaceGass 14**,
-and **Microsoft Office** on **Omarchy** (Arch Linux + Hyprland) with full
-GPU acceleration and a working API-development workflow.
+**Omarchy for structural engineers.** Running **Rhino 8**, **Strand7 R3**,
+**CSi ETABS 22**, **SpaceGass 14**, and **Microsoft Office** on **Omarchy**
+(Arch Linux + Hyprland) with full GPU acceleration and a working
+API-development workflow.
 
 None of these applications ship a native Linux build, and each has a real
 automation surface (RhinoCommon / Grasshopper, Strand7 COM, ETABS OAPI,
@@ -28,7 +29,7 @@ application.
 |                                                                        |                             |
 |   VS Code (Remote-SSH)       <========= virtio-net (NAT) ============> |  OpenSSH + VS Code Server   |
 |                                                                        |                             |
-|   ~/src/rhino-omarchy        <========= virtiofs share =============>  |  Z:\src (same tree in guest)|
+|   ~/src/oma-eng              <========= virtiofs share =============>  |  Z:\src (same tree in guest)|
 |                                                                                                      |
 +------------------------------------------------------------------------------------------------------+
 ```
@@ -118,9 +119,11 @@ You'll know the setup is done when all of these are true:
   and the built-in `TESTOGL.ST7` runs at monitor refresh.
 - ETABS → *Help ▸ System Info* and SpaceGass → *Settings ▸ Preferences
   ▸ Display* both report the Nvidia GPU as the active renderer.
-- Excel → *File ▸ Account ▸ About Excel* shows GPU hardware
-  acceleration enabled.
-- `Z:\src` in the guest lists the same files as `~/src/rhino-omarchy/src`
+- Excel → *File ▸ Options ▸ Advanced ▸ Display* has *Disable hardware
+  graphics acceleration* **unticked**, and Excel's viewport interacts
+  with the Nvidia GPU under load (visible in `nvidia-smi` running in
+  the guest).
+- `Z:\src` in the guest lists the same files as `~/src/oma-eng/src`
   on the host, and edits from Omarchy appear immediately.
 - `code --remote ssh-remote+windows-cad` from Omarchy opens a working
   VS Code session in the guest, with C# IntelliSense against

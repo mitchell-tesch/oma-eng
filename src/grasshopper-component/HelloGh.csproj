@@ -11,7 +11,7 @@
     <AssemblyName>HelloGh</AssemblyName>
     <RootNamespace>HelloGh</RootNamespace>
     <Version>0.1.0</Version>
-    <Title>Hello Grasshopper (rhino-omarchy)</Title>
+    <Title>Hello Grasshopper (oma-eng)</Title>
     <Description>Smallest possible Grasshopper 1 component — proves the Omarchy dev workflow.</Description>
   </PropertyGroup>
 

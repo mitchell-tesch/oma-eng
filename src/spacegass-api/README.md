@@ -44,12 +44,12 @@ so users can lift them straight into their own projects.
 ```powershell
 # Start SpaceGassApi.exe first (or leave it running in the background)
 
-cd Z:\src\rhino-omarchy\src\spacegass-api\python
+cd Z:\src\oma-eng\src\spacegass-api\python
 py -m pip install --user -r requirements.txt
 py hello_spacegass.py
 py hello_spacegass_analysis.py
 
-cd Z:\src\rhino-omarchy\src\spacegass-api\csharp\HelloSpaceGass
+cd Z:\src\oma-eng\src\spacegass-api\csharp\HelloSpaceGass
 dotnet run
 ```
 

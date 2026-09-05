@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # detect-host.sh — print a one-page report on this host's suitability for
-# the rhino-omarchy VFIO setup, and print the vendor-specific kernel
+# the oma-eng VFIO setup, and print the vendor-specific kernel
 # command line to append to /boot/limine.conf.
 #
 # Works on both Intel and AMD hosts; the discrete GPU is expected to be
@@ -138,7 +138,7 @@ fi
 
 # --- Report ---------------------------------------------------------------
 
-printf '=== rhino-omarchy host detection ===\n\n'
+printf '=== oma-eng host detection ===\n\n'
 printf 'CPU vendor         : %s (%s)\n' "$cpu_vendor" "$vendor_short"
 printf 'CPU model          : %s\n' "$cpu_model"
 

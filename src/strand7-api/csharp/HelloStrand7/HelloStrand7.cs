@@ -98,6 +98,9 @@ internal static class Program
         return 0;
     }
 
-    [DllImport("kernel32.dll", CharSet = CharSet.Ansi, SetLastError = true)]
+    // SetDllDirectoryW — Unicode variant so `STRAND7_DIR` values
+    // containing non-ASCII characters (accented usernames in
+    // %USERPROFILE%, non-English `Program Files` localisation) work.
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool SetDllDirectory(string path);
 }

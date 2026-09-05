@@ -8,7 +8,7 @@
     <AssemblyName>HelloSpaceGass</AssemblyName>
     <RootNamespace>HelloSpaceGass</RootNamespace>
     <Version>0.1.0</Version>
-    <Title>Hello SPACE GASS (rhino-omarchy)</Title>
+    <Title>Hello SPACE GASS (oma-eng)</Title>
     <Description>Smallest possible SPACE GASS 14.5+ REST API sample via the official SDK.</Description>
   </PropertyGroup>
 

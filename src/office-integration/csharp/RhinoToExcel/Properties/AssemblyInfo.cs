@@ -8,5 +8,5 @@ using Rhino.PlugIns;
 // `uuidgen` output once and then leave it alone.
 [assembly: Guid("1a681a8d-9b1d-4595-a957-10359b99c0e6")]
 
-[assembly: PlugInDescription(DescriptionType.Organization, "rhino-omarchy")]
-[assembly: PlugInDescription(DescriptionType.WebSite,      "https://github.com/mitchell-tesch/rhino-omarchy")]
+[assembly: PlugInDescription(DescriptionType.Organization, "oma-eng")]
+[assembly: PlugInDescription(DescriptionType.WebSite,      "https://github.com/mitchell-tesch/oma-eng")]

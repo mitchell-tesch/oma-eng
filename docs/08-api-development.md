@@ -10,7 +10,7 @@ page ties the pieces together.
 ```
   Omarchy (Hyprland, VS Code, Git, terminal)
         │
-        │   Edit files under ~/src/rhino-omarchy/src/
+        │   Edit files under ~/src/oma-eng/src/
         ▼
   virtiofs share ─────────────────────────► Z:\src\  in the guest
         ▲                                     │
@@ -42,8 +42,9 @@ src/
 │   ├── python/
 │   │   └── hello_strand7.py
 │   └── csharp/
-│       ├── HelloStrand7.cs
-│       └── HelloStrand7.csproj
+│       └── HelloStrand7/
+│           ├── HelloStrand7.cs
+│           └── HelloStrand7.csproj
 ├── office-integration/          Excel automation from Rhino and Strand7
 │   ├── python/
 │   │   ├── strand7_to_excel.py
@@ -74,11 +75,11 @@ src/
 Open the whole tree remote:
 
 ```bash
-code --remote ssh-remote+windows-cad ~/src/rhino-omarchy/src
+code --remote ssh-remote+windows-cad ~/src/oma-eng/src
 ```
 
-The `src/` folder in the remote window is `Z:\src\rhino-omarchy\src\` (via
-virtiofs), which is the same inode as `~/src/rhino-omarchy/src` on the
+The `src/` folder in the remote window is `Z:\src\oma-eng\src\` (via
+virtiofs), which is the same inode as `~/src/oma-eng/src` on the
 host. Edit either place, the other sees it. This is not sync — it's the
 same file.
 
@@ -86,21 +87,21 @@ same file.
 
 ```powershell
 # In the guest, via SSH or Remote-SSH terminal
-cd Z:\src\rhino-omarchy\src\rhino-plugin
+cd Z:\src\oma-eng\src\rhino-plugin
 dotnet build -c Debug
 ```
 
 For Grasshopper components:
 
 ```powershell
-cd Z:\src\rhino-omarchy\src\grasshopper-component
+cd Z:\src\oma-eng\src\grasshopper-component
 dotnet build -c Debug
 ```
 
 For the Strand7 C# sample:
 
 ```powershell
-cd Z:\src\rhino-omarchy\src\strand7-api\csharp
+cd Z:\src\oma-eng\src\strand7-api\csharp\HelloStrand7
 dotnet build -c Release
 ```
 
@@ -148,7 +149,7 @@ is no WSL here, so just Omarchy). Git on Windows over virtiofs is
 possible but has line-ending and permission quirks; skip it.
 
 ```bash
-cd ~/src/rhino-omarchy
+cd ~/src/oma-eng
 git status
 git add -A && git commit -m "..." && git push
 ```

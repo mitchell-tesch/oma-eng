@@ -15,7 +15,7 @@ public sealed class HelloGhComponent : GH_Component
                "OmarchySphere",
                "A minimal Grasshopper component built from the Omarchy virtiofs share.",
                "Params",
-               "rhino-omarchy")
+               "oma-eng")
     {
     }
 
@@ -52,8 +52,8 @@ public sealed class HelloGhComponent : GH_Component
 /// </summary>
 public sealed class HelloGhInfo : GH_AssemblyInfo
 {
-    public override string Name        => "HelloGh (rhino-omarchy)";
+    public override string Name        => "HelloGh (oma-eng)";
     public override Guid   Id           => new("39b1fb7d-3e07-4b3c-9df0-1c9e6e3b5f10");
-    public override string AuthorName   => "rhino-omarchy";
+    public override string AuthorName   => "oma-eng";
     public override string Description  => "Smallest possible Grasshopper 1 component.";
 }
