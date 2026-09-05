@@ -1,0 +1,48 @@
+name: Feature request / new doc
+description: Propose additional software coverage, a new script, or a doc improvement.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, check `README.md` § *Non-goals* to make sure the
+        proposal isn't already declined by the repo's stated scope.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What should the repo cover?
+      description: |
+        Describe the software, workflow, or improvement. If proposing new
+        structural-engineering software coverage, note the vendor licence
+        model, whether it has an API, and how it would fit alongside the
+        existing docs 06-14.
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why does it belong in oma-eng?
+      description: |
+        Repos accumulate scope; this one deliberately doesn't. Argue for the
+        addition — is it a common structural-engineering tool? Does it
+        interoperate with something already covered?
+    validations:
+      required: true
+
+  - type: textarea
+    id: how
+    attributes:
+      label: Sketch of the change
+      description: |
+        Which doc(s) would be added or modified? Any new configs, scripts,
+        or sample projects? Rough word count / line count if you know.
+
+  - type: checkboxes
+    id: willing
+    attributes:
+      label: Are you willing to work on it?
+      options:
+        - label: I'd like to open a PR for this.
+        - label: I'm proposing it for someone else to pick up.

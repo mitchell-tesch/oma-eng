@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security issue
+    url: https://github.com/mitchell-tesch/oma-eng/security/advisories/new
+    about: Please report security vulnerabilities via a GitHub Security Advisory, not a public issue. See SECURITY.md for the threat model.
+  - name: Omarchy manual
+    url: https://omarchy.org/manual/
+    about: For Omarchy-general questions (not specific to this repo), the official Omarchy Quattro manual is the primary reference.
+  - name: Level1Techs VFIO forum
+    url: https://forum.level1techs.com/c/software/vfio/
+    about: For hardware-specific VFIO / IOMMU / GPU-passthrough questions that aren't about this repo directly, the Level1Techs forum has seen every permutation.

@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+# set-guest-memory — atomically retarget guest RAM across the three
+# config files in this repo, and print the /boot/limine.conf snippet
+# the user must edit by hand.
+#
+# The guest memory size is quietly duplicated in three places:
+#   - configs/libvirt/windows-cad.xml   (<memory>, <currentMemory>, KiB)
+#   - configs/sysctl.d/99-vm-hugepages.conf   (vm.nr_hugepages, GiB)
+#   - configs/systemd/hugepages.service       (echo N > ... hugepages)
+#
+# Plus the kernel command line in /boot/limine.conf (`hugepages=N`).
+# This helper keeps the three repo files in sync and prints the
+# limine.conf update for you to paste — the bootloader config is a
+# host-system file and outside the repo, so it stays manual by design.
+#
+# Usage:
+#     scripts/set-guest-memory 32                  # set guest to 32 GiB
+#     scripts/set-guest-memory 32 --dry-run        # show the diffs
+#     scripts/set-guest-memory --status            # show current values
+#     scripts/set-guest-memory --help
+#
+# Safe to re-run; each edit is idempotent and only touches the exact
+# numeric field, leaving comments and formatting untouched.
+#
+# CAP:  guest memory in GiB, integer, in [8, 512].
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+XML="$REPO_ROOT/configs/libvirt/windows-cad.xml"
+SYSCTL="$REPO_ROOT/configs/sysctl.d/99-vm-hugepages.conf"
+SVC="$REPO_ROOT/configs/systemd/hugepages.service"
+
+usage() {
+    sed -n '2,25p' "$0"
+    exit "${1:-0}"
+}
+
+dry=0
+show_status=0
+gib=""
+for arg in "$@"; do
+    case "$arg" in
+        -h|--help)   usage 0 ;;
+        --dry-run)   dry=1 ;;
+        --status)    show_status=1 ;;
+        [0-9]*)      gib="$arg" ;;
+        *)           echo "Unknown arg: $arg" >&2; usage 2 ;;
+    esac
+done
+
+for f in "$XML" "$SYSCTL" "$SVC"; do
+    if [[ ! -f "$f" ]]; then
+        printf 'Missing repo file: %s\n' "$f" >&2
+        printf 'Run this script from a checked-out oma-eng tree.\n' >&2
+        exit 1
+    fi
+done
+
+# --- --status short-circuit ------------------------------------------------
+
+current_kib="$(sed -n "s|.*<memory unit='KiB'>\([0-9]\+\)</memory>.*|\1|p" "$XML" | head -n1)"
+current_sysctl="$(sed -n 's|^vm\.nr_hugepages = \([0-9]\+\).*|\1|p' "$SYSCTL" | head -n1)"
+current_svc="$(sed -n "s|.*echo \([0-9]\+\) > /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages.*|\1|p" "$SVC" | head -n1)"
+
+if [[ $show_status -eq 1 ]]; then
+    if [[ -n "$current_kib" ]]; then
+        printf 'windows-cad.xml <memory>       : %d KiB (%.1f GiB)\n' \
+            "$current_kib" "$(awk -v k="$current_kib" 'BEGIN{print k/1024/1024}')"
+    else
+        printf 'windows-cad.xml <memory>       : (not found)\n'
+    fi
+    printf '99-vm-hugepages.conf           : %s x 1 GiB pages\n' "${current_sysctl:-(not found)}"
+    printf 'hugepages.service              : %s x 1 GiB pages\n'  "${current_svc:-(not found)}"
+    exit 0
+fi
+
+# --- Validation -----------------------------------------------------------
+
+if [[ -z "$gib" ]]; then
+    echo "Missing memory size (in GiB). Try:  scripts/set-guest-memory 32" >&2
+    usage 2
+fi
+
+if ! [[ "$gib" =~ ^[0-9]+$ ]]; then
+    echo "Memory size must be a positive integer of GiB, got: $gib" >&2
+    exit 2
+fi
+
+if (( gib < 8 )); then
+    echo "Refusing to set guest memory below 8 GiB — none of the CAD apps" >&2
+    echo "run happily on less." >&2
+    exit 2
+fi
+
+if (( gib > 512 )); then
+    echo "Refusing to set guest memory above 512 GiB. Did you mean MiB?" >&2
+    exit 2
+fi
+
+target_kib=$(( gib * 1024 * 1024 ))
+target_pages=$gib
+
+printf 'Target: %d GiB (%d KiB, %d x 1 GiB hugepages)\n\n' \
+    "$gib" "$target_kib" "$target_pages"
+
+# --- Edits -----------------------------------------------------------------
+# Portable sed: use -E for extended regex, keep BSD-safe patterns.
+# Each edit only touches the specific numeric field, so re-runs are idempotent.
+
+edit_xml() {
+    sed -E -e "s|<memory unit='KiB'>[0-9]+</memory>|<memory unit='KiB'>${target_kib}</memory>|" \
+           -e "s|<currentMemory unit='KiB'>[0-9]+</currentMemory>|<currentMemory unit='KiB'>${target_kib}</currentMemory>|" \
+           "$1"
+}
+edit_sysctl() {
+    sed -E "s|^vm\.nr_hugepages = [0-9]+|vm.nr_hugepages = ${target_pages}|" "$1"
+}
+edit_svc() {
+    # Only touch the ExecStart line — ExecStop must stay `echo 0`
+    # so the pages are released when the service stops.
+    sed -E "/^ExecStart=/ s|(echo )[0-9]+( > /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages)|\1${target_pages}\2|" "$1"
+}
+
+if [[ $dry -eq 1 ]]; then
+    echo "=== $XML ==="
+    diff -u "$XML"    <(edit_xml    "$XML")    || true
+    echo
+    echo "=== $SYSCTL ==="
+    diff -u "$SYSCTL" <(edit_sysctl "$SYSCTL") || true
+    echo
+    echo "=== $SVC ==="
+    diff -u "$SVC"    <(edit_svc    "$SVC")    || true
+    echo
+    echo "(dry run — no files modified)"
+else
+    tmp="$(mktemp)"
+    for f in "$XML" "$SYSCTL" "$SVC"; do
+        case "$f" in
+            "$XML")    edit_xml    "$f" > "$tmp" ;;
+            "$SYSCTL") edit_sysctl "$f" > "$tmp" ;;
+            "$SVC")    edit_svc    "$f" > "$tmp" ;;
+        esac
+        if cmp -s "$tmp" "$f"; then
+            printf '  ok  %s (already at target)\n' "$f"
+        else
+            mv "$tmp" "$f"
+            tmp="$(mktemp)"
+            printf '  new %s\n' "$f"
+        fi
+    done
+    rm -f "$tmp"
+fi
+
+# --- Manual follow-up ------------------------------------------------------
+
+cat <<EOF
+
+Manual follow-up (not automated on purpose — /boot/limine.conf is a
+host system file, not part of this repo):
+
+  1. Edit /boot/limine.conf.
+     On the main Omarchy Linux entry's 'cmdline:' line, replace any
+     existing 'hugepages=NN' token with:
+
+         hugepages=${target_pages}
+
+     Full cmdline snippet for a fresh install (adjust intel_iommu /
+     amd_iommu as your CPU requires — 'scripts/detect-host.sh --cmdline'
+     prints the right one):
+
+         intel_iommu=on iommu=pt default_hugepagesz=1G hugepagesz=1G hugepages=${target_pages}
+
+  2. If the guest is already defined in libvirt, redefine it so the
+     new <memory> takes effect:
+
+         virsh --connect qemu:///system define configs/libvirt/windows-cad.xml
+
+  3. Reboot to reserve the hugepages at boot, then verify:
+
+         grep Huge /proc/meminfo
+         # HugePages_Total should be ${target_pages}
+
+EOF

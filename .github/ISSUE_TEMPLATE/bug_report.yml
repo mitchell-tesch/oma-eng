@@ -1,0 +1,62 @@
+name: Bug report
+description: Something in this repo doesn't work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please fill in enough detail that
+        someone with different hardware can reproduce the issue.
+
+  - type: input
+    id: doc-or-script
+    attributes:
+      label: Which doc or script?
+      description: Path relative to repo root, e.g. `docs/03-vm-provisioning.md` or `scripts/prepare-host.sh`.
+      placeholder: docs/03-vm-provisioning.md § 4
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What went wrong?
+      description: Command you ran, expected result, actual result. Include full error output where possible.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware
+      description: |
+        Paste the output of `scripts/detect-host.sh` if you can. Or fill in manually:
+        CPU vendor + model, iGPU driver (i915 / amdgpu), Nvidia dGPU, motherboard chipset, RAM.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Tail of `journalctl -b`, `dmesg | grep -Ei 'vfio|iommu|nvidia'`, or the
+        libvirt log at `/var/log/libvirt/qemu/windows-cad.log` — whichever fits
+        the failure.
+      render: shell
+
+  - type: input
+    id: omarchy-version
+    attributes:
+      label: Omarchy version
+      placeholder: Quattro 4.x
+
+  - type: checkboxes
+    id: reproduced
+    attributes:
+      label: Reproduction
+      options:
+        - label: I've re-run the failing step against a clean state (rebooted / fresh guest snapshot / etc.).
+        - label: I've checked `docs/09-troubleshooting.md` for the same symptom.
