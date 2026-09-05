@@ -22,7 +22,7 @@ for arg in "$@"; do
 done
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$REPO_ROOT"
+cd "$REPO_ROOT" || exit 1
 
 fails=0
 skips=0
@@ -49,17 +49,17 @@ fi
 # --- 2. libvirt-specific validation on the domain XML --------------------
 echo "==> libvirt domain validation (virt-xml-validate)"
 if command -v virt-xml-validate >/dev/null 2>&1; then
-    for xml in configs/libvirt/windows-cad.xml; do
-        [[ -f "$xml" ]] || continue
-        # windows-cad.xml uses the qemu XML namespace; virt-xml-validate
-        # in default schema mode rejects that. Use --schema domain
-        # explicitly, which is what libvirt actually uses at define time.
+    # windows-cad.xml uses the qemu XML namespace; virt-xml-validate in
+    # default schema mode rejects that. Use --schema domain explicitly,
+    # which is what libvirt actually uses at define time.
+    xml=configs/libvirt/windows-cad.xml
+    if [[ -f "$xml" ]]; then
         if virt-xml-validate "$xml" domain >/tmp/validate-libvirt.err 2>&1; then
             pass "$xml"
         else
             fail "$xml: $(cat /tmp/validate-libvirt.err)"
         fi
-    done
+    fi
 else
     skip "virt-xml-validate not installed (pacman -S libvirt)"
 fi

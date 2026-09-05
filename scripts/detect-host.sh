@@ -111,7 +111,8 @@ print_vcpupin_block() {
     local host_cpus=""
     for i in "${!order[@]}"; do
         local core="${order[$i]}"
-        local cpus=(${core_cpus[$core]})
+        local -a cpus
+        read -ra cpus <<< "${core_cpus[$core]}"
         if (( i < host_cores )); then
             host_cpus+="${cpus[*]} "
             continue

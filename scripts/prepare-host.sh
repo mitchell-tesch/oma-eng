@@ -74,7 +74,7 @@ run() {
     if [[ $DRY -eq 1 ]]; then
         printf '  [dry-run] %s\n' "$*"
     else
-        eval "$@"
+        eval "$*"
     fi
 }
 
