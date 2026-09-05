@@ -70,11 +70,14 @@ St7GetAPIErrorString = _bind("St7GetAPIErrorString",
                              [c_long, c_char_p, c_long])
 
 
+ERR_BUF_SIZE = 256   # size for St7GetAPIErrorString buffers
+
+
 def check(err, ctx):
     if err == 0:
         return
-    buf = create_string_buffer(256)
-    St7GetAPIErrorString(err, buf, 256)
+    buf = create_string_buffer(ERR_BUF_SIZE)
+    St7GetAPIErrorString(err, buf, ERR_BUF_SIZE)
     raise RuntimeError(f"{ctx}: [{err}] {buf.value.decode('ascii', 'ignore')}")
 
 
@@ -116,52 +119,49 @@ def write_to_excel(rows, out_path, model_name):
         )
 
     app = xw.App(visible=True, add_book=False)
-    try:
-        wb = app.books.add()
-        sheet = wb.sheets[0]
-        sheet.name = "Reactions"
+    wb = app.books.add()
+    sheet = wb.sheets[0]
+    sheet.name = "Reactions"
 
-        # Title
-        sheet.range("A1").value = f"Strand7 reactions — {model_name}"
-        sheet.range("A1").font.bold = True
-        sheet.range("A1").font.size = 14
-        sheet.range("A1:G1").merge()
+    # Title
+    sheet.range("A1").value = f"Strand7 reactions — {model_name}"
+    sheet.range("A1").font.bold = True
+    sheet.range("A1").font.size = 14
+    sheet.range("A1:G1").merge()
 
-        # Header row
-        headers = ["Node", "Fx (N)", "Fy (N)", "Fz (N)",
-                   "Mx (N·m)", "My (N·m)", "Mz (N·m)"]
-        sheet.range("A3").value = headers
-        header_range = sheet.range("A3:G3")
-        header_range.font.bold = True
-        header_range.color = (200, 220, 240)
+    # Header row
+    headers = ["Node", "Fx (N)", "Fy (N)", "Fz (N)",
+               "Mx (N·m)", "My (N·m)", "Mz (N·m)"]
+    sheet.range("A3").value = headers
+    header_range = sheet.range("A3:G3")
+    header_range.font.bold = True
+    header_range.color = (200, 220, 240)
 
-        # Data
+    # Data
+    if rows:
+        sheet.range("A4").value = rows
+    else:
+        sheet.range("A4").value = "(no restrained nodes returned reactions)"
+
+    # Totals
+    last_data_row = 3 + max(1, len(rows))
+    total_row = last_data_row + 1
+    sheet.range(f"A{total_row}").value = "TOTAL"
+    for col_idx, col_letter in enumerate("BCDEFG", start=2):
         if rows:
-            sheet.range("A4").value = rows
-        else:
-            sheet.range("A4").value = "(no restrained nodes returned reactions)"
+            sheet.range(f"{col_letter}{total_row}").formula = \
+                f"=SUM({col_letter}4:{col_letter}{last_data_row})"
+    sheet.range(f"A{total_row}:G{total_row}").font.bold = True
+    sheet.range(f"A{total_row}:G{total_row}").color = (240, 240, 240)
 
-        # Totals
-        last_data_row = 3 + max(1, len(rows))
-        total_row = last_data_row + 1
-        sheet.range(f"A{total_row}").value = "TOTAL"
-        for col_idx, col_letter in enumerate("BCDEFG", start=2):
-            if rows:
-                sheet.range(f"{col_letter}{total_row}").formula = \
-                    f"=SUM({col_letter}4:{col_letter}{last_data_row})"
-        sheet.range(f"A{total_row}:G{total_row}").font.bold = True
-        sheet.range(f"A{total_row}:G{total_row}").color = (240, 240, 240)
+    # Format numbers, autofit columns
+    if rows:
+        sheet.range(f"B4:G{total_row}").number_format = "0.00"
+    sheet.range("A:G").autofit()
 
-        # Format numbers, autofit columns
-        if rows:
-            sheet.range(f"B4:G{total_row}").number_format = "0.00"
-        sheet.range("A:G").autofit()
-
-        wb.save(str(out_path))
-        print(f"Excel workbook written: {out_path}")
-        print("Excel left open so you can review; close the workbook when done.")
-    finally:
-        pass  # keep the app open with the workbook visible
+    wb.save(str(out_path))
+    print(f"Excel workbook written: {out_path}")
+    print("Excel left open so you can review; close the workbook when done.")
 
 
 # --- Main ------------------------------------------------------------------
@@ -219,8 +219,8 @@ def run():
             STRAND7_UID, stLinearStatic, smNormalRun, btTrue
         )
         if err != 0:
-            buf = create_string_buffer(256)
-            St7GetAPIErrorString(err, buf, 256)
+            buf = create_string_buffer(ERR_BUF_SIZE)
+            St7GetAPIErrorString(err, buf, ERR_BUF_SIZE)
             print(f"Solver returned non-zero: [{err}] "
                   f"{buf.value.decode('ascii','ignore')}")
             print("Continuing anyway — result file may still be usable.")

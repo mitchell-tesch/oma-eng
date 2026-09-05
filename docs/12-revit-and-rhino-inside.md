@@ -48,11 +48,13 @@ Revit is memory-hungry. Extend the ladder from
 | + Revit large model (1+ GB .rvt, cloud workshared) | 48–64 GiB |
 | + Rhino.Inside.Revit active + Grasshopper canvas | +2–4 GiB on top |
 
-If Revit joins the daily stack, bump the memory element in
-[configs/libvirt/windows-cad.xml](../configs/libvirt/windows-cad.xml)
-and the `hugepages=` value in `/boot/limine.conf` together — see doc
-02 § 2 for the ladder. Host RAM floor: leave at least 8 GiB for
-Omarchy under load, so 48 GiB guest → 56 GiB host minimum.
+If Revit joins the daily stack, retarget the guest with
+[`scripts/set-guest-memory 40`](../scripts/set-guest-memory) (or
+48, 64 as needed) — it syncs the memory element in
+[configs/libvirt/windows-cad.xml](../configs/libvirt/windows-cad.xml),
+the hugepages sysctl and service, and prints the `hugepages=` value
+to paste onto `/boot/limine.conf`. Host RAM floor: leave at least
+8 GiB for Omarchy under load, so 48 GiB guest → 56 GiB host minimum.
 
 ## Licence considerations
 

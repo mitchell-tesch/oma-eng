@@ -5,9 +5,16 @@ copies it via IVSHMEM shared memory, and shows it in a native window on the
 host. Result: the Windows 11 guest appears as a Hyprland window with
 sub-millisecond copy latency and full GPU acceleration inside.
 
-You need it to match versions between host client and guest host-app. This
-repo pins **Looking Glass B7-rc1** as the reference; substitute the latest
-stable at install time and update both sides together.
+You need it to match versions between host client and guest host-app.
+Pick the latest stable release from <https://looking-glass.io/downloads>
+at install time and use the same version on both sides — the client on
+Omarchy and the host-app inside the guest. Versions bump every few
+months; the shared-memory protocol between them isn't
+forward-compatible, so keep them in lockstep.
+
+The examples below use the placeholder `<version>`; substitute
+whatever the current stable is (e.g. `B7`, `B7-rc1`, `B8-rc1`, or a
+tagged release name from the downloads page).
 
 ## 1. Shared-memory device on the host
 
@@ -58,14 +65,15 @@ yay -S looking-glass
 sudo pacman -S --needed base-devel cmake fontconfig spice-protocol \
     nettle libxkbcommon wayland-protocols libdecor \
     libxpresent libxi libxinerama libxcursor libxrandr sdl2
-scripts/install-looking-glass.sh B7-rc1
+scripts/install-looking-glass.sh <version>       # e.g. B7 or B7-rc1
 ```
 
 ## 4. Install the Looking Glass host application in the guest
 
 Download the matching Windows installer from
-<https://looking-glass.io/downloads> (pick the same version, e.g.
-`looking-glass-host-Setup-B7-rc1.exe`). Copy it to the guest via
+<https://looking-glass.io/downloads> — pick the **same version** you
+installed on Omarchy in step 3. The asset name looks like
+`looking-glass-host-Setup-<version>.exe`. Copy it to the guest via
 `Z:\vendor\` on the virtiofs share.
 
 Install it. It registers a Windows service called *Looking Glass (host)*

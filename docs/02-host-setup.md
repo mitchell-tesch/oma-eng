@@ -137,6 +137,21 @@ Omarchy's snapshot regeneration.
   [`configs/sysctl.d/99-vm-hugepages.conf`](../configs/sysctl.d/99-vm-hugepages.conf)
   instead.
 
+The guest memory value is quietly duplicated in three files
+([`windows-cad.xml`](../configs/libvirt/windows-cad.xml),
+[`99-vm-hugepages.conf`](../configs/sysctl.d/99-vm-hugepages.conf),
+[`hugepages.service`](../configs/systemd/hugepages.service)) plus
+this kernel cmdline. Rather than edit each by hand, use
+[`scripts/set-guest-memory`](../scripts/set-guest-memory) — it
+retargets the three repo files atomically and prints the exact
+`hugepages=N` value to paste here:
+
+```bash
+scripts/set-guest-memory 32               # set guest to 32 GiB
+scripts/set-guest-memory 32 --dry-run     # preview diffs first
+scripts/set-guest-memory --status         # what's the current setting?
+```
+
 Don't add these to the `/Omarchy Linux (snapshot ...)` entries — those
 are auto-managed by `omarchy-snapshot`. If you need to boot into a
 snapshot later, you'll temporarily lose IOMMU on that boot; that's OK

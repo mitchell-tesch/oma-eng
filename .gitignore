@@ -16,6 +16,14 @@ obj/
 Thumbs.db
 .DS_Store
 
+# Rhino / Grasshopper working artefacts
+*.rhl
+*.3dmbak
+*.gh.bak
+*.gh_temp
+GH_TEMP*
+AutoSave*
+
 # VM artefacts (never commit these)
 *.qcow2
 *.qcow

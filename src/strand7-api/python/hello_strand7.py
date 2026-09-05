@@ -67,11 +67,14 @@ St7GetAPIErrorString = _bind(
 )
 
 
+ERR_BUF_SIZE = 256   # size for St7GetAPIErrorString buffers
+
+
 def check(err: int, ctx: str) -> None:
     if err == 0:
         return
-    buf = create_string_buffer(256)
-    St7GetAPIErrorString(err, buf, 256)
+    buf = create_string_buffer(ERR_BUF_SIZE)
+    St7GetAPIErrorString(err, buf, ERR_BUF_SIZE)
     raise RuntimeError(f"{ctx}: [{err}] {buf.value.decode('ascii', 'ignore')}")
 
 
@@ -131,8 +134,8 @@ def main() -> int:
             print("Linear-static solver returned success.")
         else:
             # Expected on an empty model — print the error but don't crash.
-            buf = create_string_buffer(256)
-            St7GetAPIErrorString(err, buf, 256)
+            buf = create_string_buffer(ERR_BUF_SIZE)
+            St7GetAPIErrorString(err, buf, ERR_BUF_SIZE)
             print(f"Solver stopped: [{err}] {buf.value.decode('ascii', 'ignore')}")
 
         check(St7CloseFile(STRAND7_UID), "St7CloseFile")

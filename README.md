@@ -1,19 +1,22 @@
 # oma-eng
 
 **Omarchy for structural engineers.** Running **Rhino 8**, **Strand7 R3**,
-**CSi ETABS 22**, **SpaceGass 14**, **Autodesk Revit** (with
-Rhino.Inside.Revit + pyRevit), **Bluebeam Revu**, and **Microsoft
+**CSi ETABS 22**, **CSi SAP2000 26**, **SpaceGass 14**, **Autodesk Revit**
+(with Rhino.Inside.Revit + pyRevit), **Bluebeam Revu**, and **Microsoft
 Office** on **Omarchy** (Arch Linux + Hyprland) with full GPU
-acceleration and a working API-development workflow.
+acceleration and a working API-development workflow — plus a set of
+open-source tools (**Bonsai / BlenderBIM**, **Jupyter + Handcalcs**)
+that run natively on Omarchy when you don't need the guest.
 
-None of these applications ship a native Linux build, and each has a real
-automation surface (RhinoCommon / Grasshopper, Strand7 COM, ETABS OAPI,
-SpaceGass REST, Revit API, Bluebeam Actions, Excel Interop). Any approach
-that runs them under Wine trades away correctness on the API and stability
-on the GUI. This repo takes the other path: run a **Windows 11 guest under
-KVM/QEMU with VFIO GPU passthrough**, integrated seamlessly into Hyprland
-via **Looking Glass**, and drive it from Omarchy as if it were a native
-application.
+None of the Windows-native applications above ship a native Linux
+build, and each has a real automation surface (RhinoCommon /
+Grasshopper, Strand7 API, ETABS + SAP2000 OAPI, SpaceGass REST,
+Revit API, Bluebeam Actions, Excel Interop). Any approach that runs
+them under Wine trades away correctness on the API and stability on
+the GUI. This repo takes the other path: run a **Windows 11 guest
+under KVM/QEMU with VFIO GPU passthrough**, integrated seamlessly
+into Hyprland via **Looking Glass**, and drive it from Omarchy as if
+it were a native application.
 
 ## Architecture
 
@@ -25,9 +28,10 @@ application.
 |                                                                        |                             |
 |                                                                        |  Rhino 8   Grasshopper      |
 |   Looking Glass client       <=== IVSHMEM shared memory (KVMFR) ====>  |  Strand7 R3   ETABS 22      |
-|   (Hyprland window)                                                    |  SpaceGass 14   Excel       |
+|   (Hyprland window)                                                    |  SAP2000 26     SpaceGass   |
 |                                                                        |  Revit + Rhino.Inside       |
 |                                                                        |  pyRevit    Bluebeam Revu   |
+|                                                                        |  Excel + Office             |
 |                                                                        |  Nvidia driver + CUDA/OptiX |
 |                                                                        |                             |
 |   VS Code (Remote-SSH)       <========= virtio-net (NAT) ============> |  OpenSSH + VS Code Server   |
@@ -56,9 +60,10 @@ result inside a Hyprland window.
   [docs/12-revit-and-rhino-inside.md](docs/12-revit-and-rhino-inside.md))
 - Fast SSD/NVMe for the guest image (or a whole spare NVMe passed through)
 - Valid Windows 11 license, valid app licences (Rhino, Strand7, ETABS,
-  SpaceGass, Revit, Bluebeam Revu — see doc 11 for licence-server /
-  dongle passthrough options and doc 13 for corporate licence servers +
-  VPN topology)
+  SAP2000, SpaceGass, Revit, Bluebeam Revu — see doc 11 for
+  licence-server / dongle passthrough options and doc 13 for corporate
+  licence servers + VPN topology). CSi ETABS and SAP2000 share the
+  same Reprise licence pool.
 - **Omarchy quattro (4.x)** already installed. Limine bootloader (Omarchy
   default since 2.0). If you're on an older Omarchy still on
   systemd-boot, see the fallback notes at the bottom of
@@ -101,9 +106,10 @@ before the next one begins.
 8. [API development workflow](docs/08-api-development.md)
 9. [Troubleshooting playbook](docs/09-troubleshooting.md)
 10. [Office / Excel integration](docs/10-office-integration.md) — where to run Excel and why
-11. [CSi ETABS + SpaceGass](docs/11-etabs-and-spacegass.md) — additional structural packages, licence dongles, APIs
+11. [CSi ETABS + SAP2000 + SpaceGass](docs/11-etabs-and-spacegass.md) — additional structural packages, licence dongles, APIs
 12. [Revit + Rhino.Inside.Revit + pyRevit](docs/12-revit-and-rhino-inside.md) — BIM authoring and its plugin ecosystem
 13. [Bluebeam Revu + collaboration workflows](docs/13-collaboration-and-backup.md) — drawing markup, cloud storage, VPN, corporate licence servers, backup
+14. [Native Omarchy tooling](docs/14-native-omarchy-tooling.md) — open-source (Bonsai/BlenderBIM + Jupyter/Handcalcs) for the work that doesn't need the guest
 
 ## Repo layout
 
@@ -125,8 +131,9 @@ You'll know the setup is done when all of these are true:
   `SystemInfo` command reports it as the OpenGL device.
 - Strand7 → *Tools ▸ Preferences ▸ Graphics* reports the Nvidia GPU
   and the built-in `TESTOGL.ST7` runs at monitor refresh.
-- ETABS → *Help ▸ System Info* and SpaceGass → *Settings ▸ Preferences
-  ▸ Display* both report the Nvidia GPU as the active renderer.
+- ETABS → *Help ▸ System Info* reports the Nvidia GPU; SAP2000
+  → *Help ▸ About SAP2000* likewise; SpaceGass → *Settings ▸
+  Preferences ▸ Display* reports the Nvidia GPU as the active renderer.
 - Excel → *File ▸ Options ▸ Advanced ▸ Display* has *Disable hardware
   graphics acceleration* **unticked**, and Excel's viewport interacts
   with the Nvidia GPU under load (visible in `nvidia-smi` running in
@@ -136,18 +143,24 @@ You'll know the setup is done when all of these are true:
   Revit process without warnings; pyRevit's ribbon tab loads.
 - If installed: Bluebeam Revu opens PDFs from the virtiofs share and
   can sign into Bluebeam Studio (Prime or hosted) from the guest.
+- Optional native Omarchy tooling (doc 14): Bonsai add-on loads in
+  Blender and opens IFC files with a populated spatial tree; `jupyter
+  lab` launches and a `%%render` cell with Handcalcs produces LaTeX
+  output.
 - `Z:\src` in the guest lists the same files as `~/src/oma-eng/src`
   on the host, and edits from Omarchy appear immediately.
 - `code --remote ssh-remote+windows-cad` from Omarchy opens a working
   VS Code session in the guest, with C# IntelliSense against
-  `RhinoCommon.dll`, `ETABSv1.dll`, and (if installed) `RevitAPI.dll`.
+  `RhinoCommon.dll`, `ETABSv1.dll`, `SAP2000v1.dll` (if installed),
+  and `RevitAPI.dll` (if installed).
 
 ## Non-goals
 
-- Running any of Rhino, Strand7, ETABS, SpaceGass, Revit, Bluebeam,
-  or Office directly under Wine. Grasshopper, Strand7 API, ETABS
-  OAPI, SpaceGass automation, Revit API, Bluebeam Actions, and Excel
-  Interop all fall over there; this is a dead-end for API work.
+- Running any of Rhino, Strand7, ETABS, SAP2000, SpaceGass, Revit,
+  Bluebeam, or Office directly under Wine. Grasshopper, Strand7 API,
+  ETABS + SAP2000 OAPI, SpaceGass automation, Revit API, Bluebeam
+  Actions, and Excel Interop all fall over there; this is a
+  dead-end for API work.
 - Nested virtualisation, cloud GPU instances, or WSL. All add latency,
   cost, or lose GPU access to the real hardware.
 - Persuading McNeel, Strand7 Pty Ltd, CSi, StruSoft, Autodesk,

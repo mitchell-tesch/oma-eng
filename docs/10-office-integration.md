@@ -33,13 +33,13 @@ the VM changes; Office is just another Windows app.
   Windows work.
 
 **Cost:** RAM. Bump the guest to 24 GiB (this repo's default) or
-32 GiB if you routinely open large workbooks. The XML template
-[`configs/libvirt/windows-cad.xml`](../configs/libvirt/windows-cad.xml)
-is already set to 24 GiB. If you change it, remember to also change:
-
-- The `hugepages=N` value in `/boot/limine.conf`, or
-- The `vm.nr_hugepages` value in
-  [`configs/sysctl.d/99-vm-hugepages.conf`](../configs/sysctl.d/99-vm-hugepages.conf).
+32 GiB if you routinely open large workbooks. Use
+[`scripts/set-guest-memory <GiB>`](../scripts/set-guest-memory) to
+retarget [`configs/libvirt/windows-cad.xml`](../configs/libvirt/windows-cad.xml),
+[`configs/sysctl.d/99-vm-hugepages.conf`](../configs/sysctl.d/99-vm-hugepages.conf),
+and [`configs/systemd/hugepages.service`](../configs/systemd/hugepages.service)
+atomically; the script also prints the `hugepages=N` snippet to
+paste onto the Limine cmdline.
 
 ### B. Omarchy's built-in `omarchy windows vm` (Dockur)
 
@@ -84,9 +84,23 @@ Nothing special. From an admin PowerShell in the guest:
 
 **Microsoft 365 (recommended, subscription):**
 
+winget's Office package IDs shift between releases — search first to
+find the current one for your Windows/Office channel:
+
 ```powershell
-winget install --silent Microsoft.Office
+winget search Microsoft.Office
+# Typical current names (verify against the search output):
+#   Microsoft.Office              # legacy alias, may still work
+#   Microsoft.Office365Apps       # M365 Apps for Enterprise
+#   Microsoft.OfficeLTSC.2021     # perpetual LTSC 2021
+#   Microsoft.OfficeLTSC.2024     # perpetual LTSC 2024
+winget install --silent <the-id-you-just-confirmed>
 ```
+
+For a firm-wide silent deployment, prefer the **Office Deployment
+Tool** with an XML config
+(<https://learn.microsoft.com/en-us/deployoffice/overview-office-deployment-tool>) —
+gives you channel/version pinning that winget doesn't.
 
 Then sign in with your 365 account. Activation happens automatically;
 365 has no problem with VMs.
@@ -94,9 +108,10 @@ Then sign in with your 365 account. Activation happens automatically;
 **Office LTSC 2021 / 2024 (perpetual):**
 
 Use the Office Deployment Tool with an XML config for click-to-run
-install. Perpetual licences activate cleanly in the VFIO guest as
-long as the OS install itself is stable (activation is tied to the
-Windows install ID, which doesn't change on VM restart).
+install, or the matching `Microsoft.OfficeLTSC.*` winget package
+above. Perpetual licences activate cleanly in the VFIO guest as long
+as the OS install itself is stable (activation is tied to the Windows
+install ID, which doesn't change on VM restart).
 
 **Avoid** older Office 2013/2016 perpetual licences in a VM if you
 can — they occasionally trigger reactivation after XML changes to the

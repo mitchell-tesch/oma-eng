@@ -52,8 +52,10 @@
        * 24 GiB comfortable floor for Rhino + Strand7 + Excel/Office
        * 32 GiB+ if you routinely open large FEA models with parallel
          solvers, or big xlsx dashboards driven by Interop.Excel
-       Match the hugepages= kernel param in /boot/limine.conf to match:
-       16 GiB -> hugepages=16, 24 GiB -> hugepages=24, 32 GiB -> hugepages=32 -->
+       * 40+ GiB if Revit joins the daily stack (see docs/12).
+       Use scripts/set-guest-memory <GiB> to retarget this element,
+       the hugepages sysctl/service, and print the hugepages= value
+       for /boot/limine.conf all at once. -->
 
   <!-- ============================================================
        vCPU count + pinning — MUST BE FILLED IN BEFORE `virsh define`.

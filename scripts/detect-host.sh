@@ -20,7 +20,7 @@ for arg in "$@"; do
     case "$arg" in
         --cmdline) only_cmdline=1 ;;
         --vcpupin) only_vcpupin=1 ;;
-        -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
         *) echo "Unknown arg: $arg" >&2; exit 2 ;;
     esac
 done

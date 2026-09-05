@@ -26,6 +26,7 @@ internal static class Program
     private const string Dll = "St7API.dll";
 
     private const int St7Uid                 = 1;
+    private const int ErrBufSize             = 256;   // for St7GetAPIErrorString
 
     // Constants per the Strand7 R3 API Reference.
     private const int LinearStatic           = 1;   // stLinearStatic
@@ -47,7 +48,7 @@ internal static class Program
     private static void Check(int err, string ctx)
     {
         if (err == 0) return;
-        var sb = new StringBuilder(256);
+        var sb = new StringBuilder(ErrBufSize);
         St7GetAPIErrorString(err, sb, sb.Capacity);
         throw new InvalidOperationException($"{ctx}: [{err}] {sb}");
     }
@@ -82,7 +83,7 @@ internal static class Program
             }
             else
             {
-                var sb = new StringBuilder(256);
+                var sb = new StringBuilder(ErrBufSize);
                 St7GetAPIErrorString(solverErr, sb, sb.Capacity);
                 Console.WriteLine($"Solver stopped: [{solverErr}] {sb}");
             }

@@ -28,8 +28,8 @@ lsusb
 # Bus 001 Device 007: ID 0529:0001 Aladdin Knowledge Systems HASP copy protection dongle
 ```
 
-Add to the guest XML (already outlined in the template — uncomment and
-fill IDs):
+Add to the guest XML permanently (already outlined in the template —
+uncomment and fill IDs):
 
 ```xml
 <hostdev mode='subsystem' type='usb' managed='yes'>
@@ -38,6 +38,21 @@ fill IDs):
     <product id='0x0001'/>
   </source>
 </hostdev>
+```
+
+To hot-attach a dongle to a running guest (useful when the dongle
+was plugged in after boot, or when swapping between projects that
+use different dongles), use the ready-made
+[configs/libvirt/hasp-dongle.xml](../configs/libvirt/hasp-dongle.xml)
+template:
+
+```bash
+# Edit the vendor/product IDs in configs/libvirt/hasp-dongle.xml first
+virsh -c qemu:///system attach-device windows-cad \
+    configs/libvirt/hasp-dongle.xml
+# ... work ...
+virsh -c qemu:///system detach-device windows-cad \
+    configs/libvirt/hasp-dongle.xml
 ```
 
 Then install the Sentinel HASP Runtime in the guest (bundled with the

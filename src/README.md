@@ -12,11 +12,12 @@ instantly. Build and run in the guest.
 |---|---|---|---|
 | `rhino-plugin/` | Minimal Rhino 8 plugin (`.rhp`) — registers a `_HelloRhino` command | C# / .NET 7 | `dotnet build` |
 | `grasshopper-component/` | Minimal Grasshopper 1 component (`.gha`) | C# / .NET 7 | `dotnet build` |
-| `strand7-api/python/` | Strand7 R3 automation — creates a tiny model, solves, prints reactions | Python 3 (ctypes) | `py hello_strand7.py` |
+| `strand7-api/python/` | Strand7 R3 automation — initialises the API, creates a tiny model, runs the solver as a smoke test | Python 3 (ctypes) | `py hello_strand7.py` |
 | `strand7-api/csharp/HelloStrand7/` | Same as above but P/Invoke from C# | C# / .NET 8 | `dotnet run` |
 | `office-integration/python/` | Strand7 → Excel: run LSA, dump reactions to a formatted `.xlsx` via `xlwings` | Python 3 + xlwings | `py strand7_to_excel.py` |
 | `office-integration/csharp/RhinoToExcel/` | Rhino `_RhinoToExcel` command — dumps selected/all objects' metadata to Excel via late-bound COM | C# / .NET 7 + RhinoCommon | `dotnet build` |
 | `etabs-api/csharp/HelloETABS/` | ETABS 22 OAPI — starts ETABS, builds a cantilever column, runs LSA, prints base reaction | C# / .NET 8 (late-bound COM) | `dotnet run` |
+| `sap2000-api/` | **Doc only** — port `HelloETABS` to SAP2000 26 with a two-line ProgID + file-extension swap. See the folder README. | — | — |
 | `spacegass-api/python/hello_spacegass.py` | SPACE GASS 14.5+ REST — opens sample, lists nodes, closes | Python 3 + `space-gass-api` (async) | `py hello_spacegass.py` |
 | `spacegass-api/python/hello_spacegass_analysis.py` | SPACE GASS 14.5+ REST — opens sample, runs LSA, reads reactions | Python 3 + `space-gass-api` (async) | `py hello_spacegass_analysis.py` |
 | `spacegass-api/csharp/HelloSpaceGass/` | C# equivalent of the Python quick-start | C# / .NET 8 + `SpaceGassApi` NuGet | `dotnet run` |

@@ -119,6 +119,37 @@ Packages* entry (label wording depends on Rhino 8 version).
 - For Grasshopper, drop the `.gha` into
   `%APPDATA%\Grasshopper\Libraries\` (or use a junction to `Z:\...\bin`).
 
+### If you're on Rhino 9
+
+Rhino 9 shifts the RhinoCommon target framework from `net7.0-windows`
+to `net8.0-windows`. To retarget the samples in this repo:
+
+1. In every `.csproj` that references `RhinoCommon`
+   ([HelloRhino](../src/rhino-plugin/HelloRhino.csproj),
+   [HelloGh](../src/grasshopper-component/HelloGh.csproj),
+   [RhinoToExcel](../src/office-integration/csharp/RhinoToExcel/RhinoToExcel.csproj)),
+   change the target framework:
+
+   ```xml
+   <TargetFramework>net8.0-windows</TargetFramework>
+   ```
+
+2. Bump the `RhinoCommon` package version to the 9-series wildcard:
+
+   ```xml
+   <PackageReference Include="RhinoCommon" Version="9.*-*" ExcludeAssets="runtime" />
+   ```
+
+   (`Grasshopper` NuGet in [HelloGh](../src/grasshopper-component/HelloGh.csproj)
+   likewise.)
+
+3. Update the build-output paths in this doc and in the guest install
+   commands from `net7.0-windows` to `net8.0-windows`.
+
+The plugin architecture and RhinoCommon APIs used by the samples
+haven't changed shape across the 8→9 boundary — no code edits
+needed.
+
 ## 7. Debug from VS Code (Omarchy) into Rhino (guest)
 
 Because you have Remote-SSH, launching Rhino from VS Code is trivial:

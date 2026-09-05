@@ -26,3 +26,35 @@ jobs:
         run: |
           chmod +x scripts/validate-config.sh
           scripts/validate-config.sh
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dry-run resolve every requirements.txt
+        run: |
+          set -e
+          python -m pip install --upgrade pip
+          # --dry-run resolves + downloads to cache without installing.
+          # Fails if a pinned package no longer exists or its deps drift.
+          find src -name requirements.txt -print0 | while IFS= read -r -d '' req; do
+            echo "==> $req"
+            python -m pip install --dry-run --user -r "$req"
+          done
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore Linux-buildable NuGet dependencies
+        run: |
+          # HelloSpaceGass targets net8.0 (not net8.0-windows) so it
+          # restores on Linux CI. This catches NuGet drift on the
+          # SpaceGassApi package without needing a Windows runner.
+          # The RhinoCommon-referencing samples target net7.0-windows
+          # and need a Windows runner to restore against McNeel's feed,
+          # so they're deliberately excluded here.
+          dotnet restore src/spacegass-api/csharp/HelloSpaceGass/HelloSpaceGass.csproj
+

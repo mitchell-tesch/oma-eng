@@ -1,10 +1,13 @@
-# 11 — CSi ETABS + SpaceGass
+# 11 — CSi ETABS + SAP2000 + SpaceGass
 
-Both are Windows-native structural analysis packages. Neither runs
-under Wine reliably. Both install into the existing VFIO CAD guest
+All three are Windows-native structural analysis packages. None run
+under Wine reliably. All install into the existing VFIO CAD guest
 without changes to the passthrough architecture — but each brings
 its own licence, RAM footprint, and automation surface. This page
-covers all of that in one place.
+covers all three in one place because ETABS and SAP2000 share the
+same CSi OAPI (any automation you write for one nearly ports to the
+other with a ProgID swap), and SPACE GASS shares the CSi cross-platform
+constraint set even though its API is REST rather than COM.
 
 Read after [10 — Office / Excel integration](10-office-integration.md).
 
@@ -16,10 +19,14 @@ caveat noted below for SpaceGass. Reasons are the same as for Excel:
 - Multi-app COM/OAPI interop needs everything in one Windows session
   (ETABS OAPI → Excel via `Interop.Excel`, Strand7 → Excel via
   `xlwings`, and so on).
-- The Nvidia dGPU is already there; ETABS and SpaceGass both use
-  OpenGL for their model view and benefit from real GPU acceleration
-  with big frames.
+- The Nvidia dGPU is already there; ETABS, SAP2000, and SpaceGass
+  all use OpenGL for their model view and benefit from real GPU
+  acceleration with big frames.
 - One licensed Windows install to manage.
+- ETABS and SAP2000 share the CSi runtime (`CSiAPIv1.dll`) and,
+  if you're on a network licence, the same Reprise licence pool —
+  installing both alongside each other is the intended CSi
+  deployment.
 
 **SpaceGass 14.5+ is the exception.** Its automation surface is a
 local REST HTTP service (`SpaceGassApi.exe`), not COM, so the
@@ -39,18 +46,24 @@ With the full engineering stack open concurrently:
 |---|---|
 | Rhino only | 16 GiB |
 | Rhino + Strand7 + Excel (repo default) | 24 GiB |
-| + ETABS (typical building models) | 32 GiB |
+| + ETABS **or** SAP2000 (typical building models) | 32 GiB |
+| + ETABS + SAP2000 concurrently | 36 GiB |
 | + ETABS (200+ storey model, non-linear time-history) | 48 GiB |
 | + SpaceGass (typical) | +2–4 GiB on top |
 | + big Excel dashboards driven by OAPI | +4–8 GiB |
 
-If you routinely open ETABS with the rest of the stack, bump the
-default in [configs/libvirt/windows-cad.xml](../configs/libvirt/windows-cad.xml)
-to 32 GiB (`33554432` KiB) and remember to also bump `hugepages=` in
-`/boot/limine.conf` and either
-[configs/sysctl.d/99-vm-hugepages.conf](../configs/sysctl.d/99-vm-hugepages.conf)
-or [configs/systemd/hugepages.service](../configs/systemd/hugepages.service)
-to match.
+If you routinely open ETABS or SAP2000 with the rest of the stack,
+retarget the guest to 32 GiB with the helper — it edits
+[configs/libvirt/windows-cad.xml](../configs/libvirt/windows-cad.xml),
+[configs/sysctl.d/99-vm-hugepages.conf](../configs/sysctl.d/99-vm-hugepages.conf),
+and
+[configs/systemd/hugepages.service](../configs/systemd/hugepages.service)
+atomically, then prints the exact `hugepages=` value to paste onto
+the Limine cmdline:
+
+```bash
+scripts/set-guest-memory 32               # or 40, 48 as needed
+```
 
 Watch host RAM: leave at least **8 GiB for Omarchy** even under heavy
 guest load, or your Wayland session starts stuttering. So 32 GiB guest
@@ -132,6 +145,9 @@ Point each app at the server via its usual licence configuration:
 
 - **ETABS** — first-launch dialog offers a licence server; enter the
   Reprise server address (`5054@license-host` style).
+- **SAP2000** — same first-launch dialog and same Reprise server;
+  the pool is shared, so a firm licence covers both if both features
+  are on the licence.
 - **SpaceGass** — *Help ▸ Registration* → network licence entry.
 
 ### CSiCloud / cloud licences
@@ -163,6 +179,36 @@ reports the OpenGL device — should read the Nvidia card.
 If it reports *GDI Generic* or *Microsoft Basic Render Driver*, the
 QXL fallback adapter is still driving ETABS. Fix per doc 09
 (*Rhino uses Microsoft Basic Render Driver*) — the same steps apply.
+
+## Installing SAP2000
+
+CSi's general-purpose FEA package. Same installer flow as ETABS,
+same Reprise licence pool, same OAPI shape — with a ProgID swap.
+
+1. Download the SAP2000 installer from CSi's client portal to the
+   Omarchy host, drop into `~/src/oma-eng/src/vendor/`, and run from
+   `Z:\vendor\` in the guest.
+2. Accept defaults. Install location is
+   `C:\Program Files\Computers and Structures\SAP2000 26\`
+   (folder name follows the point release — `SAP2000 25\` for v25,
+   etc.).
+3. The Sentinel HASP runtime installed for ETABS covers SAP2000 too;
+   no second install is needed. Same story for the Reprise (RLM)
+   licence server — SAP2000 authenticates against the same
+   `port@licence-host` you configured for ETABS.
+4. Launch SAP2000. Licence dialog either picks up the dongle / RLM
+   pool or lets you enter the network server.
+5. *Options ▸ Preferences ▸ Graphics* → confirm **DirectX** or
+   **OpenGL** with hardware acceleration on. SAP2000 defaults to
+   DirectX on modern Windows 11; either works with the
+   passed-through Nvidia dGPU.
+6. Quick smoke test: *File ▸ New Model* → *Blank* → add two joints,
+   a frame, run linear-static. Should complete in seconds.
+
+### Verify GPU usage — SAP2000
+
+*Help ▸ About SAP2000* shows the OpenGL / DirectX renderer. Same
+Nvidia-vs-fallback check as ETABS.
 
 ## Installing SpaceGass
 
@@ -237,6 +283,52 @@ model.File.Save(@"C:\Users\Public\demo.edb");   // required before RunAnalysis
 model.Analyze.RunAnalysis();
 ```
 
+### SAP2000 — OAPI (shares the CSi surface)
+
+SAP2000 exposes the **same OAPI shape** as ETABS. Once you have a
+`cSapModel` handle, the code that drives ETABS drives SAP2000 too.
+Three concrete differences:
+
+| | ETABS | SAP2000 |
+|---|---|---|
+| **Interop DLL** | `ETABSv1.dll` | `SAP2000v1.dll` |
+| **ProgID** (late-bound COM) | `CSI.ETABS.API.ETABSObject` | `CSI.SAP2000.API.SapObject` |
+| **Interop namespace** (shared) | `CSiAPIv1` | `CSiAPIv1` |
+| **Install path** | `C:\Program Files\Computers and Structures\ETABS 22\` | `C:\Program Files\Computers and Structures\SAP2000 26\` |
+| **Model file extension** | `.edb` | `.sdb` |
+
+Any code targeting `cSapModel` sub-interfaces (`PointObj`,
+`FrameObj`, `AreaObj`, `LoadPatterns`, `Analyze`, `Results`, …)
+is portable across both apps. Vendor sample projects live under the
+respective install's `API\` subfolder.
+
+**Porting the [HelloETABS](../src/etabs-api/csharp/HelloETABS/) sample
+to SAP2000:** the changes are three lines:
+
+```csharp
+// Before (ETABS):
+private const string ProgID = "CSI.ETABS.API.ETABSObject";
+// ...
+Check(sap.File.Save(@"C:\Users\Public\HelloETABS_scratch.edb"),
+      "File.Save");
+
+// After (SAP2000):
+private const string ProgID = "CSI.SAP2000.API.SapObject";
+// ...
+Check(sap.File.Save(@"C:\Users\Public\HelloSAP2000_scratch.sdb"),
+      "File.Save");
+```
+
+Everything else — `PointObj.AddCartesian`, `FrameObj.AddByPoint`,
+`Analyze.RunAnalysis`, `Results.JointReact` — is unchanged.
+`eUnits.kip_in_F` (value `3`) means the same in both.
+
+**Calling from other languages:** same story as ETABS —
+`comtypes.client.CreateObject("SAP2000v1.Helper")` +
+`CreateObjectProgID("CSI.SAP2000.API.SapObject")` from Python;
+`Dispatch("SAP2000.SapObject")` from VBA. See the ETABS subsection
+above for the pattern.
+
 ### SpaceGass — REST HTTP API (14.5+)
 
 SPACE GASS 14.5 introduced an official **REST HTTP API** served by
@@ -308,11 +400,17 @@ easy:
   [`src/office-integration/csharp/RhinoToExcel/`](../src/office-integration/csharp/RhinoToExcel/):
   same late-bound Excel COM approach, iterate `SapModel.Results.*` for
   storey drifts / member forces, bulk-write to `Range.Value`.
-- **Rhino → ETABS** — a Grasshopper component reads a topology from
-  Rhino geometry, calls `SapModel.PointObj.AddCartesian`, etc.
-  This is essentially what commercial plugins like *Karamba3D-to-CSi*
-  or *Rhino Inside ETABS* do. You can build a lightweight in-house
-  version in the same repo.
+- **SAP2000 → Excel** — identical code path, `SAP2000v1.dll` +
+  `CSI.SAP2000.API.SapObject` in place of the ETABS ProgID. Same
+  `Results.*` interfaces.
+- **Rhino → ETABS / SAP2000** — a Grasshopper component reads a
+  topology from Rhino geometry, calls
+  `SapModel.PointObj.AddCartesian`, etc. This is essentially what
+  commercial plugins like *Karamba3D-to-CSi* or *Rhino Inside ETABS*
+  do. You can build a lightweight in-house version in the same repo.
+- **ETABS ↔ SAP2000** — either can export the other's model via
+  *File ▸ Export* → CSi text file, and re-import. Preserves geometry
+  and section assignments across the two solvers.
 - **Strand7 ↔ ETABS** — no first-class interchange; export
   Strand7 nodes/elements to a text intermediate and generate a `.$ET`
   from a Python bridge. Slow but reliable.
@@ -333,16 +431,18 @@ easy:
 
 ## Exit criteria
 
-- Both ETABS and SPACE GASS installed and licensed inside the guest.
-- Both report the Nvidia GPU in their graphics preferences panels.
-- ETABS `SystemInfo` shows OpenGL renderer = Nvidia card.
+- ETABS, SAP2000 (if installed), and SPACE GASS installed and
+  licensed inside the guest.
+- All report the Nvidia GPU in their graphics preferences panels.
+- ETABS *Help ▸ System Info* shows OpenGL renderer = Nvidia card;
+  SAP2000 *Help ▸ About SAP2000* likewise.
 - A test analysis in each completes with expected wall times (linear
   static on a small frame: sub-second).
-- If you plan to use API automation: `ETABSv1.dll` is reachable and
-  CSi's licence server / dongle answers when the API starts a session
-  (this consumes a licence just like the GUI does); and
-  `curl http://localhost:34560/api/v1/service/info` from an admin
-  PowerShell in the guest returns a 200 response with a SPACE GASS
-  version string.
+- If you plan to use API automation: `ETABSv1.dll` / `SAP2000v1.dll`
+  are reachable and CSi's licence server / dongle answers when the
+  API starts a session (this consumes a licence just like the GUI
+  does); and `curl http://localhost:34560/api/v1/service/info` from
+  an admin PowerShell in the guest returns a 200 response with a
+  SPACE GASS version string.
 
 Continue to [12 — Revit + Rhino.Inside.Revit + pyRevit](12-revit-and-rhino-inside.md).

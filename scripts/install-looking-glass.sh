@@ -4,9 +4,15 @@
 # version exactly to the guest host-app version.
 #
 # Usage:
-#     scripts/install-looking-glass.sh                 # latest stable (B7)
+#     scripts/install-looking-glass.sh                 # default version (see below)
 #     scripts/install-looking-glass.sh B7-rc1          # specific release
 #     scripts/install-looking-glass.sh B7-rc1 /opt     # install prefix
+#
+# The default VERSION below tracks a known-good release at the time
+# this script was last touched — bump it (or override on the command
+# line) to whatever is current at <https://looking-glass.io/downloads>.
+# The guest host-app and the host client MUST match versions exactly;
+# their shared-memory protocol is not forward-compatible.
 
 set -euo pipefail
 
