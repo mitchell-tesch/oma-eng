@@ -1,17 +1,18 @@
 # oma-eng
 
 **Omarchy for structural engineers.** Running **Rhino 8**, **Strand7 R3**,
-**CSi ETABS 22**, **SpaceGass 14**, and **Microsoft Office** on **Omarchy**
-(Arch Linux + Hyprland) with full GPU acceleration and a working
-API-development workflow.
+**CSi ETABS 22**, **SpaceGass 14**, **Autodesk Revit** (with
+Rhino.Inside.Revit + pyRevit), **Bluebeam Revu**, and **Microsoft
+Office** on **Omarchy** (Arch Linux + Hyprland) with full GPU
+acceleration and a working API-development workflow.
 
 None of these applications ship a native Linux build, and each has a real
 automation surface (RhinoCommon / Grasshopper, Strand7 COM, ETABS OAPI,
-SpaceGass COM/batch, Excel Interop). Any approach that runs them under
-Wine trades away correctness on the API and stability on the GUI. This
-repo takes the other path: run a **Windows 11 guest under KVM/QEMU with
-VFIO GPU passthrough**, integrated seamlessly into Hyprland via
-**Looking Glass**, and drive it from Omarchy as if it were a native
+SpaceGass REST, Revit API, Bluebeam Actions, Excel Interop). Any approach
+that runs them under Wine trades away correctness on the API and stability
+on the GUI. This repo takes the other path: run a **Windows 11 guest under
+KVM/QEMU with VFIO GPU passthrough**, integrated seamlessly into Hyprland
+via **Looking Glass**, and drive it from Omarchy as if it were a native
 application.
 
 ## Architecture
@@ -25,6 +26,8 @@ application.
 |                                                                        |  Rhino 8   Grasshopper      |
 |   Looking Glass client       <=== IVSHMEM shared memory (KVMFR) ====>  |  Strand7 R3   ETABS 22      |
 |   (Hyprland window)                                                    |  SpaceGass 14   Excel       |
+|                                                                        |  Revit + Rhino.Inside       |
+|                                                                        |  pyRevit    Bluebeam Revu   |
 |                                                                        |  Nvidia driver + CUDA/OptiX |
 |                                                                        |                             |
 |   VS Code (Remote-SSH)       <========= virtio-net (NAT) ============> |  OpenSSH + VS Code Server   |
@@ -36,8 +39,8 @@ application.
 
 You edit C#/Python plugin code on Omarchy with your normal tools; the guest
 sees the same files instantly via virtiofs, builds them with the real Rhino
-SDK / Strand7 COM / ETABS OAPI, and displays the result inside a Hyprland
-window.
+SDK / Strand7 API / ETABS OAPI / Revit API / pyRevit, and displays the
+result inside a Hyprland window.
 
 ## Prerequisites (confirmed for this repo)
 
@@ -47,12 +50,15 @@ window.
   (Intel iGPU on `i915` **or** AMD iGPU on `amdgpu` — both work identically)
 - **Nvidia dGPU** dedicated to the guest (Turing / Ampere / Ada tested paths)
 - ≥ 32 GB RAM (24 GB guest for Rhino + Strand7 + Excel is the repo default;
-  bump to 32 GB guest if you add ETABS to the mix — see
-  [docs/10-office-integration.md](docs/10-office-integration.md) and
-  [docs/11-etabs-and-spacegass.md](docs/11-etabs-and-spacegass.md))
+  bump to 32 GB guest if you add ETABS, 40+ GB if you also run Revit — see
+  [docs/10-office-integration.md](docs/10-office-integration.md),
+  [docs/11-etabs-and-spacegass.md](docs/11-etabs-and-spacegass.md), and
+  [docs/12-revit-and-rhino-inside.md](docs/12-revit-and-rhino-inside.md))
 - Fast SSD/NVMe for the guest image (or a whole spare NVMe passed through)
 - Valid Windows 11 license, valid app licences (Rhino, Strand7, ETABS,
-  SpaceGass — see doc 11 for licence-server / dongle passthrough options)
+  SpaceGass, Revit, Bluebeam Revu — see doc 11 for licence-server /
+  dongle passthrough options and doc 13 for corporate licence servers +
+  VPN topology)
 - **Omarchy quattro (4.x)** already installed. Limine bootloader (Omarchy
   default since 2.0). If you're on an older Omarchy still on
   systemd-boot, see the fallback notes at the bottom of
@@ -96,6 +102,8 @@ before the next one begins.
 9. [Troubleshooting playbook](docs/09-troubleshooting.md)
 10. [Office / Excel integration](docs/10-office-integration.md) — where to run Excel and why
 11. [CSi ETABS + SpaceGass](docs/11-etabs-and-spacegass.md) — additional structural packages, licence dongles, APIs
+12. [Revit + Rhino.Inside.Revit + pyRevit](docs/12-revit-and-rhino-inside.md) — BIM authoring and its plugin ecosystem
+13. [Bluebeam Revu + collaboration workflows](docs/13-collaboration-and-backup.md) — drawing markup, cloud storage, VPN, corporate licence servers, backup
 
 ## Repo layout
 
@@ -123,23 +131,28 @@ You'll know the setup is done when all of these are true:
   graphics acceleration* **unticked**, and Excel's viewport interacts
   with the Nvidia GPU under load (visible in `nvidia-smi` running in
   the guest).
+- If installed: Revit → *File ▸ Options ▸ Graphics* reports the Nvidia
+  GPU; Rhino.Inside.Revit's *Start* button opens Grasshopper inside the
+  Revit process without warnings; pyRevit's ribbon tab loads.
+- If installed: Bluebeam Revu opens PDFs from the virtiofs share and
+  can sign into Bluebeam Studio (Prime or hosted) from the guest.
 - `Z:\src` in the guest lists the same files as `~/src/oma-eng/src`
   on the host, and edits from Omarchy appear immediately.
 - `code --remote ssh-remote+windows-cad` from Omarchy opens a working
   VS Code session in the guest, with C# IntelliSense against
-  `RhinoCommon.dll` and `ETABSv1.dll`.
+  `RhinoCommon.dll`, `ETABSv1.dll`, and (if installed) `RevitAPI.dll`.
 
 ## Non-goals
 
-- Running any of Rhino, Strand7, ETABS, SpaceGass, or Office directly
-  under Wine. Grasshopper, Strand7 COM, ETABS OAPI, SpaceGass
-  automation, and Excel Interop all fall over there; this is a
-  dead-end for API work.
+- Running any of Rhino, Strand7, ETABS, SpaceGass, Revit, Bluebeam,
+  or Office directly under Wine. Grasshopper, Strand7 API, ETABS
+  OAPI, SpaceGass automation, Revit API, Bluebeam Actions, and Excel
+  Interop all fall over there; this is a dead-end for API work.
 - Nested virtualisation, cloud GPU instances, or WSL. All add latency,
   cost, or lose GPU access to the real hardware.
-- Persuading McNeel, Strand7 Pty Ltd, CSi, StruSoft, or Microsoft to
-  ship native Linux binaries. That would obsolete this whole repo —
-  happy day if it happens.
+- Persuading McNeel, Strand7 Pty Ltd, CSi, StruSoft, Autodesk,
+  Bluebeam, or Microsoft to ship native Linux binaries. That would
+  obsolete this whole repo — happy day if it happens.
 
 ## Licence
 
