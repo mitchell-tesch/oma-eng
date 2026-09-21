@@ -49,10 +49,10 @@ fi
 # --- 2. libvirt-specific validation on the domain XML --------------------
 echo "==> libvirt domain validation (virt-xml-validate)"
 if command -v virt-xml-validate >/dev/null 2>&1; then
-    # windows-cad.xml uses the qemu XML namespace; virt-xml-validate in
+    # windows-eng.xml uses the qemu XML namespace; virt-xml-validate in
     # default schema mode rejects that. Use --schema domain explicitly,
     # which is what libvirt actually uses at define time.
-    xml=configs/libvirt/windows-cad.xml
+    xml=configs/libvirt/windows-eng.xml
     if [[ -f "$xml" ]]; then
         if virt-xml-validate "$xml" domain >/tmp/validate-libvirt.err 2>&1; then
             pass "$xml"

@@ -9,7 +9,7 @@ Confirms three things at once:
   * COM automation Python -> Excel works (per-Windows-session).
 
 Run from an interactive PowerShell in the guest (Looking Glass or VS
-Code Remote-SSH), not a plain `ssh windows-cad` session — COM needs a
+Code Remote-SSH), not a plain `ssh windows-eng` session — COM needs a
 user session.
 
     uv sync

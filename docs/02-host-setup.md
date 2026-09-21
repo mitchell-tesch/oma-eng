@@ -180,7 +180,7 @@ Omarchy's snapshot regeneration.
   instead.
 
 The guest memory value is quietly duplicated in three files
-([`windows-cad.xml`](../configs/libvirt/windows-cad.xml),
+([`windows-eng.xml`](../configs/libvirt/windows-eng.xml),
 [`99-vm-hugepages.conf`](../configs/sysctl.d/99-vm-hugepages.conf),
 [`hugepages.service`](../configs/systemd/hugepages.service)) plus
 this kernel cmdline. Rather than edit each by hand, use
@@ -344,7 +344,7 @@ installed [`scripts/cpu-governor`](../scripts/cpu-governor) at
 `/usr/local/bin/cpu-governor` and
 [`configs/libvirt/hooks/qemu`](../configs/libvirt/hooks/qemu) at
 `/etc/libvirt/hooks/qemu`, so the governor swaps to `performance`
-when the `windows-cad` domain starts and back to `schedutil` when it
+when the `windows-eng` domain starts and back to `schedutil` when it
 stops — nothing else to do.
 
 Manual usage if you want to swap without the guest running:

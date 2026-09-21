@@ -1,11 +1,11 @@
 <!--
-    windows-cad.xml — libvirt domain template for the Windows 11 CAD/FEA guest.
+    windows-eng.xml — libvirt domain template for the Windows 11 CAD/FEA guest.
 
     EDIT every line tagged with "EDIT:" before defining this domain.
 
     Define with:
-        virsh -c qemu:///system define configs/libvirt/windows-cad.xml
-        virsh -c qemu:///system start windows-cad
+        virsh -c qemu:///system define configs/libvirt/windows-eng.xml
+        virsh -c qemu:///system start windows-eng
 
     Layout:
       - 24 GiB memory backed by 1 GiB hugepages (bump for big FEA / Office use)
@@ -18,7 +18,7 @@
       - SPICE + QXL for install-time display (Looking Glass takes over later)
 -->
 <domain type='kvm' xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'>
-  <name>windows-cad</name>
+  <name>windows-eng</name>
   <!-- <uuid> intentionally omitted: libvirt auto-generates one at
        `virsh define` time. If you need to pin the UUID for some reason
        (e.g. reproducing a licence lock or a Windows activation ID),
@@ -141,7 +141,7 @@
       <feature enabled='yes' name='secure-boot'/>
     </firmware>
     <loader secure='yes'/>
-    <nvram>/var/lib/libvirt/qemu/nvram/windows-cad_VARS.fd</nvram>
+    <nvram>/var/lib/libvirt/qemu/nvram/windows-eng_VARS.fd</nvram>
     <!-- Boot order is set per-disk via <boot order='N'/> on the <disk>
          elements below. Do NOT re-add <boot dev='hd'/> here — libvirt
          refuses to define a domain that mixes the two boot-order styles. -->
@@ -221,7 +221,7 @@
     <!-- EDIT: source file path -->
     <disk type='file' device='disk'>
       <driver name='qemu' type='qcow2' cache='none' io='native' discard='unmap'/>
-      <source file='/var/lib/libvirt/images/windows-cad.qcow2'/>
+      <source file='/var/lib/libvirt/images/windows-eng.qcow2'/>
       <target dev='sda' bus='scsi'/>
       <boot order='1'/>
     </disk>
@@ -277,7 +277,7 @@
               guest physical address the GPU's DMA engine cannot
               reach, and the domain fails at start with
               `vfio_container_dma_map ... = -22 (Invalid argument)`
-              in /var/log/libvirt/qemu/windows-cad.log. Doc 04 §2b
+              in /var/log/libvirt/qemu/windows-eng.log. Doc 04 §2b
               covers the `kvmfr` kernel-module path that sidesteps
               this on laptops.
 

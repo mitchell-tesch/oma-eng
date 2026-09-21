@@ -2,7 +2,7 @@
 
 This directory is bind-mounted into the Windows guest as **`Z:\`** via
 virtiofs (see `<filesystem>` block in
-[../configs/libvirt/windows-cad.xml](../configs/libvirt/windows-cad.xml)).
+[../configs/libvirt/windows-eng.xml](../configs/libvirt/windows-eng.xml)).
 Edit any of these files from Omarchy — the guest sees the change
 instantly. Build and run in the guest.
 

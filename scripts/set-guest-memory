@@ -4,7 +4,7 @@
 # the user must edit by hand.
 #
 # The guest memory size is quietly duplicated in three places:
-#   - configs/libvirt/windows-cad.xml   (<memory>, <currentMemory>, KiB)
+#   - configs/libvirt/windows-eng.xml   (<memory>, <currentMemory>, KiB)
 #   - configs/sysctl.d/99-vm-hugepages.conf   (vm.nr_hugepages, GiB)
 #   - configs/systemd/hugepages.service       (echo N > ... hugepages)
 #
@@ -27,7 +27,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-XML="$REPO_ROOT/configs/libvirt/windows-cad.xml"
+XML="$REPO_ROOT/configs/libvirt/windows-eng.xml"
 SYSCTL="$REPO_ROOT/configs/sysctl.d/99-vm-hugepages.conf"
 SVC="$REPO_ROOT/configs/systemd/hugepages.service"
 
@@ -65,10 +65,10 @@ current_svc="$(sed -n "s|.*echo \([0-9]\+\) > /sys/kernel/mm/hugepages/hugepages
 
 if [[ $show_status -eq 1 ]]; then
     if [[ -n "$current_kib" ]]; then
-        printf 'windows-cad.xml <memory>       : %d KiB (%.1f GiB)\n' \
+        printf 'windows-eng.xml <memory>       : %d KiB (%.1f GiB)\n' \
             "$current_kib" "$(awk -v k="$current_kib" 'BEGIN{print k/1024/1024}')"
     else
-        printf 'windows-cad.xml <memory>       : (not found)\n'
+        printf 'windows-eng.xml <memory>       : (not found)\n'
     fi
     printf '99-vm-hugepages.conf           : %s x 1 GiB pages\n' "${current_sysctl:-(not found)}"
     printf 'hugepages.service              : %s x 1 GiB pages\n'  "${current_svc:-(not found)}"
@@ -174,7 +174,7 @@ host system file, not part of this repo):
   2. If the guest is already defined in libvirt, redefine it so the
      new <memory> takes effect:
 
-         virsh --connect qemu:///system define configs/libvirt/windows-cad.xml
+         virsh --connect qemu:///system define configs/libvirt/windows-eng.xml
 
   3. Reboot to reserve the hugepages at boot, then verify:
 

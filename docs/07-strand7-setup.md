@@ -78,10 +78,10 @@ template:
 
 ```bash
 # Edit the vendor/product IDs in configs/libvirt/hasp-dongle.xml first
-virsh -c qemu:///system attach-device windows-cad \
+virsh -c qemu:///system attach-device windows-eng \
     configs/libvirt/hasp-dongle.xml
 # ... work ...
-virsh -c qemu:///system detach-device windows-cad \
+virsh -c qemu:///system detach-device windows-eng \
     configs/libvirt/hasp-dongle.xml
 ```
 
@@ -222,7 +222,7 @@ The project is x64-only (Strand7 R3 ships a 64-bit DLL). If you get a
 VS Code Remote-SSH into the guest, then F5. Each sample ships its own
 `.vscode/` directory so first-time setup is one open + one F5.
 
-1. In VS Code on Omarchy → *Remote Explorer* → *SSH* → `windows-cad` →
+1. In VS Code on Omarchy → *Remote Explorer* → *SSH* → `windows-eng` →
    *Connect in New Window*.
 2. In the new (green) window: *File ▸ Open Folder* → paste
    `Z:\strand7-api\csharp\HelloStrand7` (or `Z:\strand7-api\python`
@@ -272,7 +272,7 @@ the repo directly onto a real Windows workstation later.
 ## 9. Snapshot
 
 ```bash
-virsh --connect qemu:///system snapshot-create-as windows-cad rhino-strand7 \
+virsh --connect qemu:///system snapshot-create-as windows-eng rhino-strand7 \
     "Rhino 8 + Grasshopper + Strand7 R3 installed and verified"
 ```
 

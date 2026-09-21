@@ -26,7 +26,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pattern.
 - `CONTRIBUTING.md`, `SECURITY.md`, and this `CHANGELOG.md`.
 - `scripts/set-guest-memory` helper — atomically updates guest RAM
-  across `windows-cad.xml`, `99-vm-hugepages.conf`, and
+  across `windows-eng.xml`, `99-vm-hugepages.conf`, and
   `hugepages.service`; prints the `/boot/limine.conf` snippet to
   edit by hand.
 - GitHub issue templates (`.github/ISSUE_TEMPLATE/`).
@@ -39,7 +39,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Repository renamed** from `rhino-omarchy` to `oma-eng`
   (Omarchy for engineering). All README / doc / csproj metadata /
   AssemblyInfo GitHub URLs / virtiofs paths updated.
-- `configs/libvirt/windows-cad.xml`:
+- `configs/libvirt/windows-eng.xml`:
   - `<uuid>` element removed — libvirt now auto-generates one at
     `virsh define` time instead of accepting an all-zero placeholder.
   - `<vcpu>` and `<cputune>` blocks commented out with a big banner
@@ -85,5 +85,5 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Broken Omarchy manual link in doc 10
   (`learn.omacom.io/2/the-omarchy-manual/28-windows-vm` → 
   `omarchy.org/manual/windows-vm`).
-- `windows-cad.xml` XML comment could not contain `--vcpupin` inline
+- `windows-eng.xml` XML comment could not contain `--vcpupin` inline
   (double-hyphen disallowed inside XML comments); reworded to prose.

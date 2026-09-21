@@ -2,7 +2,7 @@
 # list-evdev-for-passthrough.sh — enumerate the /dev/input/by-id/ symlinks
 # suitable for QEMU `input-linux` evdev pass-through, and print the two
 # lines you paste into the <qemu:commandline> block of configs/libvirt/
-# windows-cad.xml.
+# windows-eng.xml.
 #
 # Usage:
 #     scripts/list-evdev-for-passthrough.sh
@@ -66,7 +66,7 @@ EOF
     exit 0
 fi
 
-printf '%-8s %s\n' 'Kind'  'Path (paste this into windows-cad.xml)'
+printf '%-8s %s\n' 'Kind'  'Path (paste this into windows-eng.xml)'
 printf '%-8s %s\n' '----'  '--------------------------------------'
 if (( ${#kbds[@]} == 0 )); then
     printf '%-8s (none — plug in an external USB keyboard)\n' 'keyboard'

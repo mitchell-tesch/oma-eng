@@ -46,7 +46,7 @@ out where they appear:
 
 Neither is enabled by default; both require an explicit edit to
 `/etc/modprobe.d/vfio.conf`, the kernel cmdline, or
-`configs/libvirt/windows-cad.xml`.
+`configs/libvirt/windows-eng.xml`.
 
 ## What the repo does *not* try to defend against
 

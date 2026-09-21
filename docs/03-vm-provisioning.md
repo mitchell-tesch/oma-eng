@@ -22,7 +22,7 @@ Two reasonable options:
 ```bash
 sudo mkdir -p /var/lib/libvirt/images
 sudo qemu-img create -f qcow2 -o preallocation=metadata,cluster_size=1M \
-    /var/lib/libvirt/images/windows-cad.qcow2 200G
+    /var/lib/libvirt/images/windows-eng.qcow2 200G
 ```
 
 **B) Dedicated NVMe passthrough** — pass the block device directly for
@@ -32,8 +32,8 @@ in the guest XML instead of a `<disk>`. Note this consumes an entire drive.
 ## 3. Copy and edit the guest XML template
 
 ```bash
-cp configs/libvirt/windows-cad.xml /tmp/windows-cad.xml
-$EDITOR /tmp/windows-cad.xml
+cp configs/libvirt/windows-eng.xml /tmp/windows-eng.xml
+$EDITOR /tmp/windows-eng.xml
 ```
 
 Placeholders to change (search for `EDIT:` for XML-comment markers and
@@ -97,9 +97,9 @@ Placeholders to change (search for `EDIT:` for XML-comment markers and
 ```bash
 sudo virsh net-start default
 sudo virsh net-autostart default
-virsh --connect qemu:///system define /tmp/windows-cad.xml
-virsh --connect qemu:///system start windows-cad
-virt-viewer --connect qemu:///system windows-cad
+virsh --connect qemu:///system define /tmp/windows-eng.xml
+virsh --connect qemu:///system start windows-eng
+virt-viewer --connect qemu:///system windows-eng
 ```
 
 `virt-viewer` gives you a SPICE window to complete the Windows install.
@@ -199,17 +199,17 @@ frame rate should be within a couple of percent of bare-metal.
 ## 10. Snapshot before you touch anything else
 
 ```bash
-virsh --connect qemu:///system snapshot-create-as windows-cad clean-install \
+virsh --connect qemu:///system snapshot-create-as windows-eng clean-install \
     "Windows + virtio + Nvidia + SSH, before Rhino/Strand7"
 ```
 
 ## Exit criteria
 
-- `virsh list` shows `windows-cad` `running`.
+- `virsh list` shows `windows-eng` `running`.
 - SPICE console works, guest boots into Windows 11.
 - Device Manager shows the Nvidia card, no warnings, `nvidia-smi` works.
 - `Z:\` mounts the host `src/` tree.
-- `ssh windows-cad` from Omarchy works (after adding a host entry in
+- `ssh windows-eng` from Omarchy works (after adding a host entry in
   `~/.ssh/config`).
 
 Continue to [04 — Looking Glass](04-looking-glass.md) for the seamless

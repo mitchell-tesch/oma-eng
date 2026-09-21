@@ -35,7 +35,7 @@ the VM changes; Office is just another Windows app.
 **Cost:** RAM. Bump the guest to 24 GiB (this repo's default) or
 32 GiB if you routinely open large workbooks. Use
 [`scripts/set-guest-memory <GiB>`](../scripts/set-guest-memory) to
-retarget [`configs/libvirt/windows-cad.xml`](../configs/libvirt/windows-cad.xml),
+retarget [`configs/libvirt/windows-eng.xml`](../configs/libvirt/windows-eng.xml),
 [`configs/sysctl.d/99-vm-hugepages.conf`](../configs/sysctl.d/99-vm-hugepages.conf),
 and [`configs/systemd/hugepages.service`](../configs/systemd/hugepages.service)
 atomically; the script also prints the `hugepages=N` snippet to
@@ -146,7 +146,7 @@ Repo sample:
 [`src/office-integration/python/hello_excel.py`](../src/office-integration/python/hello_excel.py)
 — opens a new workbook, writes A1:A2, prints Excel's PID. From an
 interactive PowerShell in the guest (Looking Glass or VS Code
-Remote-SSH; not plain `ssh windows-cad`, which doesn't hold a COM
+Remote-SSH; not plain `ssh windows-eng`, which doesn't hold a COM
 session):
 
 ```powershell

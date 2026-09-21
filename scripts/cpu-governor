@@ -13,7 +13,7 @@
 #
 #     #!/usr/bin/env bash
 #     domain="$1"; action="$2"
-#     [[ "$domain" != "windows-cad" ]] && exit 0
+#     [[ "$domain" != "windows-eng" ]] && exit 0
 #     case "$action" in
 #         prepare)  /usr/local/bin/cpu-governor performance ;;
 #         release)  /usr/local/bin/cpu-governor schedutil ;;

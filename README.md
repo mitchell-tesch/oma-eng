@@ -124,7 +124,7 @@ src/        API sample projects; this directory is virtiofs-mounted into the gue
 
 You'll know the setup is done when all of these are true:
 
-- `virsh list` shows `windows-cad` running.
+- `virsh list` shows `windows-eng` running.
 - Looking Glass shows the Windows desktop inside a Hyprland window with
   < 5 ms added latency and no tearing.
 - Inside the guest, `nvidia-smi` sees the dGPU and Rhino's
@@ -149,7 +149,7 @@ You'll know the setup is done when all of these are true:
   output.
 - `Z:\` in the guest lists the same files as `~/dev/oma-eng/src`
   on the host, and edits from Omarchy appear immediately.
-- `code --remote ssh-remote+windows-cad` from Omarchy opens a working
+- `code --remote ssh-remote+windows-eng` from Omarchy opens a working
   VS Code session in the guest, with C# IntelliSense against
   `RhinoCommon.dll`, `ETABSv1.dll`, `SAP2000v1.dll` (if installed),
   and `RevitAPI.dll` (if installed).

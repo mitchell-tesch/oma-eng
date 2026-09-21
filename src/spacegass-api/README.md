@@ -72,7 +72,7 @@ need to reach `SpaceGassApi.exe` on port 34560. Two easy paths:
   uv sync
   uv run hello_spacegass.py http://192.168.122.42:34560
   ```
-- **SSH port forward.** `ssh -L 34560:localhost:34560 windows-cad`
+- **SSH port forward.** `ssh -L 34560:localhost:34560 windows-eng`
   from Omarchy, then run the samples on the host against
   `http://localhost:34560`. No firewall change needed.
 

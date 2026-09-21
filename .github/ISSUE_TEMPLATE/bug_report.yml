@@ -43,7 +43,7 @@ body:
       label: Relevant logs
       description: |
         Tail of `journalctl -b`, `dmesg | grep -Ei 'vfio|iommu|nvidia'`, or the
-        libvirt log at `/var/log/libvirt/qemu/windows-cad.log` — whichever fits
+        libvirt log at `/var/log/libvirt/qemu/windows-eng.log` — whichever fits
         the failure.
       render: shell
 

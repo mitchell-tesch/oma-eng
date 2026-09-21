@@ -35,7 +35,7 @@ scripts/validate-config.sh
 It runs the same checks CI runs:
 
 - XML syntax on all libvirt / hostdev templates.
-- `virt-xml-validate` on `configs/libvirt/windows-cad.xml`.
+- `virt-xml-validate` on `configs/libvirt/windows-eng.xml`.
 - `shellcheck` on every script (warning level).
 - `bash -n` syntax check.
 - `python -m py_compile` on every sample.

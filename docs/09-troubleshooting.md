@@ -293,7 +293,7 @@ Get-PnpDevice | Where-Object {$_.FriendlyName -match 'HASP|Sentinel'}
 
 If absent, the `<hostdev>` USB IDs are wrong or the dongle was plugged
 in after VM start. `virsh --connect qemu:///system attach-device
-windows-cad configs/libvirt/hasp-dongle.xml` to hot-attach.
+windows-eng configs/libvirt/hasp-dongle.xml` to hot-attach.
 
 ### Cloud licence — `St7Init` returns a licence error
 
@@ -679,8 +679,8 @@ uv run python -m ipykernel install --user --name oma-native \
 
 - `journalctl -b | tail -300`
 - `dmesg | grep -Ei 'vfio|iommu|nvidia|qemu|kvm'`
-- `virsh --connect qemu:///system domblkstat windows-cad`
-- Enable QEMU trace: add `<log file='/var/log/libvirt/qemu/windows-cad.log'/>`
+- `virsh --connect qemu:///system domblkstat windows-eng`
+- Enable QEMU trace: add `<log file='/var/log/libvirt/qemu/windows-eng.log'/>`
   to the domain and read it after a failed start.
 - Ask the [Level1Techs VFIO forum](https://forum.level1techs.com/c/software/vfio/)
   — they have seen every hardware permutation.

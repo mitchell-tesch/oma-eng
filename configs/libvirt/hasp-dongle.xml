@@ -1,6 +1,6 @@
 <!--
     hasp-dongle.xml — libvirt device XML for hot-attaching a HASP / CmStick
-    licence dongle to the running windows-cad guest.
+    licence dongle to the running windows-eng guest.
 
     EDIT the vendor and product IDs to match your dongle (from `lsusb`).
     Common IDs:
@@ -8,15 +8,15 @@
       * 0x064f WIBU CmStick      (SpaceGass some builds)
 
     Hot-attach:
-        virsh -c qemu:///system attach-device windows-cad \
+        virsh -c qemu:///system attach-device windows-eng \
             configs/libvirt/hasp-dongle.xml
 
     Hot-detach:
-        virsh -c qemu:///system detach-device windows-cad \
+        virsh -c qemu:///system detach-device windows-eng \
             configs/libvirt/hasp-dongle.xml
 
     Persistent attachment goes in the main domain XML — see
-    configs/libvirt/windows-cad.xml for a matching <hostdev> block.
+    configs/libvirt/windows-eng.xml for a matching <hostdev> block.
 -->
 <hostdev mode='subsystem' type='usb' managed='yes'>
   <source>

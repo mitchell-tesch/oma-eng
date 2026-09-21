@@ -7,13 +7,13 @@
 #
 # Wants `scripts/cpu-governor` installed at /usr/local/bin/cpu-governor.
 #
-# Only acts on the 'windows-cad' domain so unrelated guests are left
+# Only acts on the 'windows-eng' domain so unrelated guests are left
 # alone. Adjust the domain name if you renamed it.
 
 domain="$1"
 action="$2"
 
-[[ "$domain" != "windows-cad" ]] && exit 0
+[[ "$domain" != "windows-eng" ]] && exit 0
 
 case "$action" in
     prepare)

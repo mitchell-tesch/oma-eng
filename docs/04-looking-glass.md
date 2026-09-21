@@ -39,7 +39,7 @@ sudo systemd-tmpfiles --create
 ## 2. Add IVSHMEM to the guest XML
 
 The template in
-[`configs/libvirt/windows-cad.xml`](../configs/libvirt/windows-cad.xml)
+[`configs/libvirt/windows-eng.xml`](../configs/libvirt/windows-eng.xml)
 ships the IVSHMEM block **commented out** — doc 03 uses SPICE only, so
 Looking Glass isn't wired up during Windows install. Two ways to add it,
 depending on your dGPU:
@@ -55,7 +55,7 @@ Uncomment the shipped block:
 </shmem>
 ```
 
-Apply via `virsh --connect qemu:///system edit windows-cad`. Libvirt
+Apply via `virsh --connect qemu:///system edit windows-eng`. Libvirt
 auto-creates `/dev/shm/looking-glass` sized to match, owned by
 `qemu:qemu`. Skip to §3.
 
@@ -161,7 +161,7 @@ attached; a VDD presents a phantom one so DXGI enumerates the Nvidia
 adapter. Via SSH from Omarchy:
 
 ```bash
-ssh windows-cad
+ssh windows-eng
 # in the guest cmd:
 start https://github.com/VirtualDrivers/Virtual-Display-Driver/releases/latest
 ```
@@ -182,7 +182,7 @@ lists 800×600, 1366×768, 1920×1080, 2560×1440, and 3840×2160, and
 Windows will default to 800×600 on first boot after install. SSH can't
 see interactive-session display state (same session isolation as the
 `Z:` mapping), so the quickest fix is to open the SPICE console with
-`virt-viewer --connect qemu:///system windows-cad` (kill
+`virt-viewer --connect qemu:///system windows-eng` (kill
 `looking-glass-client` first — the two can't share the SPICE port),
 then inside Windows go *Settings → System → Display*, click *Identify*,
 select the small 800×600 monitor (VDD), and bump *Display resolution*
@@ -431,7 +431,7 @@ paths.
 ## 9. First run
 
 ```bash
-virsh --connect qemu:///system start windows-cad
+virsh --connect qemu:///system start windows-eng
 looking-glass-client
 ```
 

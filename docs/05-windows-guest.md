@@ -167,7 +167,7 @@ Restart-Service sshd
 On the Omarchy host, add to `~/.ssh/config`:
 
 ```
-Host windows-cad
+Host windows-eng
     HostName 192.168.122.XX      # from `virsh net-dhcp-leases default`
     User mitchell                # your guest local account
     IdentityFile ~/.ssh/id_ed25519
@@ -177,7 +177,7 @@ Host windows-cad
 Test:
 
 ```bash
-ssh windows-cad "systeminfo | Select-String 'OS Name','Total Physical Memory'"
+ssh windows-eng "systeminfo | Select-String 'OS Name','Total Physical Memory'"
 ```
 
 ## 7. VS Code Server bootstrap
@@ -186,7 +186,7 @@ From the Omarchy host:
 
 ```bash
 code --install-extension ms-vscode-remote.remote-ssh
-code --remote ssh-remote+windows-cad ~/dev/oma-eng/src
+code --remote ssh-remote+windows-eng ~/dev/oma-eng/src
 ```
 
 On the first connect, VS Code installs the remote server into the guest
@@ -242,7 +242,7 @@ expect a ~4 GB download and 15–20 minutes of install time.
 ## 9. Snapshot
 
 ```bash
-virsh --connect qemu:///system snapshot-create-as windows-cad tuned \
+virsh --connect qemu:///system snapshot-create-as windows-eng tuned \
     "Nvidia driver, SSH, dev tooling — before Rhino/Strand7"
 ```
 
@@ -250,7 +250,7 @@ virsh --connect qemu:///system snapshot-create-as windows-cad tuned \
 
 - `nvidia-smi` reports the dGPU and correct driver.
 - Device Manager is warning-free.
-- `ssh windows-cad hostname` returns the guest name from Omarchy.
+- `ssh windows-eng hostname` returns the guest name from Omarchy.
 - VS Code Remote-SSH successfully opens `Z:\src` in the guest.
 - `dotnet --version` prints an 8.x version in the guest.
 

@@ -74,7 +74,7 @@ src/
 
 ## Editing from Omarchy, running in the guest
 
-VS Code on Omarchy → *Remote Explorer* → *SSH* → `windows-cad` →
+VS Code on Omarchy → *Remote Explorer* → *SSH* → `windows-eng` →
 *Connect in New Window*. In the new (green) window: *File ▸ Open
 Folder* → paste `Z:\` (or a specific project folder such as
 `Z:\rhino-plugin` or `Z:\strand7-api\csharp\HelloStrand7`).
@@ -84,7 +84,7 @@ host, via virtiofs. Edit either place, the other sees it immediately
 — not sync, the same file.
 
 **SSH-session `Z:` caveat** — VirtIO-FS Service mounts `Z:` per
-interactive user session. Plain `ssh windows-cad` opens a
+interactive user session. Plain `ssh windows-eng` opens a
 non-interactive session that doesn't inherit that mapping, so
 `dir Z:\` errors with *"The system cannot find the path specified."*
 Workarounds:
@@ -93,13 +93,13 @@ Workarounds:
   interactive session for the remote server), so building and
   running via VS Code works.
 - **Plain SSH**: run the command through PowerShell's user-session
-  helper, e.g. `ssh windows-cad "powershell -Command 'net use Z: /persistent:no & cd Z:\\ & dotnet build'"`
+  helper, e.g. `ssh windows-eng "powershell -Command 'net use Z: /persistent:no & cd Z:\\ & dotnet build'"`
   — or add a persistent `net use` in a Task Scheduler *At log on*
   task that runs at boot with the SYSTEM account.
 
 Both `uv sync` and `dotnet build` in the samples below assume you
 launched them from an interactive session (Remote-SSH or a Looking
-Glass PowerShell) rather than plain `ssh windows-cad`.
+Glass PowerShell) rather than plain `ssh windows-eng`.
 
 ### Building
 

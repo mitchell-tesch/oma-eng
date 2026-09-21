@@ -109,7 +109,7 @@ no audio function. That is a muxless mobile Optimus card (typical on
 gaming and mobile-workstation laptops). Do NOT add a second <hostdev>
 block or a second vfio-pci id for an audio function — there isn't one.
 Guest audio must go through the emulated ich9/HDA device (already in
-configs/libvirt/windows-cad.xml). Looking Glass will still work: the
+configs/libvirt/windows-eng.xml). Looking Glass will still work: the
 guest Nvidia driver renders to the IVSHMEM shared buffer and the host
 client copies from there — the muxless design is invisible to LG.
 EOF

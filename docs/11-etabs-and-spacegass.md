@@ -54,7 +54,7 @@ With the full engineering stack open concurrently:
 
 If you routinely open ETABS or SAP2000 with the rest of the stack,
 retarget the guest to 32 GiB with the helper — it edits
-[configs/libvirt/windows-cad.xml](../configs/libvirt/windows-cad.xml),
+[configs/libvirt/windows-eng.xml](../configs/libvirt/windows-eng.xml),
 [configs/sysctl.d/99-vm-hugepages.conf](../configs/sysctl.d/99-vm-hugepages.conf),
 and
 [configs/systemd/hugepages.service](../configs/systemd/hugepages.service)
@@ -107,7 +107,7 @@ Bus 001 Device 007: ID 0529:0001 SafeNet Sentinel HASP key
 ```
 
 Add a `<hostdev>` block per dongle to
-[configs/libvirt/windows-cad.xml](../configs/libvirt/windows-cad.xml)
+[configs/libvirt/windows-eng.xml](../configs/libvirt/windows-eng.xml)
 (the template already has one commented out for Strand7 — add extras
 for CSi and SpaceGass):
 
@@ -334,7 +334,7 @@ a 10 kip horizontal load, runs linear-static, and prints the base
 reaction.
 
 From an interactive PowerShell in the guest (Looking Glass or VS Code
-Remote-SSH terminal — not plain `ssh windows-cad`):
+Remote-SSH terminal — not plain `ssh windows-eng`):
 
 ```powershell
 cd Z:\etabs-api\csharp\HelloETABS
@@ -542,7 +542,7 @@ authentication, clients don't need to share a Windows session with the
 service — you can drive it from Omarchy over the guest's virtio-net
 interface (`http://<guest-ip>:34560` after allowing the port through
 Windows Firewall) or through an SSH tunnel (`ssh -L 34560:localhost:34560
-windows-cad`). See [src/spacegass-api/README.md](../src/spacegass-api/README.md).
+windows-eng`). See [src/spacegass-api/README.md](../src/spacegass-api/README.md).
 
 **Structural Toolkit** — SPACE GASS acquired Structural Toolkit in
 2024. If you use both, check *Help ▸ Integrations* inside SPACE GASS

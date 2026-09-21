@@ -172,10 +172,10 @@ Five things to back up, on different schedules:
 
 | What | Where | Frequency | How |
 |---|---|---|---|
-| **Guest disk image** (`/var/lib/libvirt/images/windows-cad.qcow2`) | External drive or NAS | Weekly + before major Revit / ETABS updates | Shut down the guest cleanly, then `qemu-img convert -O qcow2 -c` to a copy on the backup target. Live backups risk a torn image. |
+| **Guest disk image** (`/var/lib/libvirt/images/windows-eng.qcow2`) | External drive or NAS | Weekly + before major Revit / ETABS updates | Shut down the guest cleanly, then `qemu-img convert -O qcow2 -c` to a copy on the backup target. Live backups risk a torn image. |
 | **Virtiofs source tree** (`~/dev/oma-eng/`) | Git remote (GitHub / GitLab / self-hosted) | Every commit | Standard `git push`. No extra tooling. |
 | **Guest `%APPDATA%` state** for Autodesk / pyRevit / Rhino / Bluebeam | Inside the guest disk image (covered) or a virtiofs-mounted host folder | Weekly | If you want per-app backups separate from the qcow2, use `robocopy /MIR` in the guest to a virtiofs-mounted host folder. |
-| **libvirt XML** (`configs/libvirt/windows-cad.xml`) | Git | Every edit | Already tracked in this repo. |
+| **libvirt XML** (`configs/libvirt/windows-eng.xml`) | Git | Every edit | Already tracked in this repo. |
 | **Licence dongles** (physical HASP / CmStick sticks) | Locked drawer + a text file with each dongle's `lsusb` vendor:product IDs and a photo of the label | On receipt | Losing a physical dongle is a real business cost. Take a photo of the ID label and record the `lsusb` output at first plug-in so a replacement can be ordered against the right IDs. |
 
 **Snapshots aren't backup.** `virsh snapshot-create-as` writes into
