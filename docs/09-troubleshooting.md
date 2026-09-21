@@ -430,6 +430,91 @@ mobile workstation cards are WDDM-only on Windows).
 
 ---
 
+## CSi ETABS / SAP2000 OAPI
+
+These four errors bit us end-to-end getting
+[`src/etabs-api/csharp/HelloETABS`](../src/etabs-api/csharp/HelloETABS/)
+to build and run against ETABS 23. All four are the same underlying
+issue — CSi's `ETABSv1.dll` is a plain managed wrapper (not a PIA),
+uses explicit interface implementations on the co-classes, and
+registers the LocalServer32 in a way that's elevation-locked. Fix the
+sample once, and any downstream OAPI code inherits the pattern.
+
+### `CS1759: Cannot embed interop types from assembly 'ETABSv1'`
+
+`ETABSv1.dll` is not a Primary Interop Assembly — it's missing
+`ImportedFromTypeLibAttribute` / `PrimaryInteropAssemblyAttribute`.
+Drop `<EmbedInteropTypes>true</EmbedInteropTypes>` from the
+`<Reference>` and use `<Private>true</Private>` instead so the DLL
+is copied next to `HelloETABS.exe` at build time.
+
+### `CS0122: 'Helper.CreateObject(...)' is inaccessible`
+
+`Helper.CreateObject` (and every OAPI method — `ApplicationStart`,
+`SapModel`, `CreateObjectProgID`, `File`, `PointObj`, …) is an
+explicit interface implementation on the CSi co-class, so it's
+private on the concrete class and only reachable through the
+interface. Declare the local as the interface type:
+
+```csharp
+cHelper helper = new Helper();          // NOT var, NOT Helper
+cOAPI etabs = helper.CreateObjectProgID("CSI.ETABS.API.ETABSObject");
+```
+
+Same trick applies at every subsequent hop — use `cSapModel`, not
+`var` or the concrete `SapModel` class.
+
+### `COMException 0x80080005 (CO_E_SERVER_EXEC_FAILURE)`
+
+Comes from the raw `Type.GetTypeFromProgID(...)` +
+`Activator.CreateInstance` path. Modern ETABS registers its
+LocalServer32 in a way that requires an elevated launcher; a
+medium-integrity `dotnet run` can't start the server process.
+
+Fix — use `cHelper.CreateObjectProgID(progID)` (introduced in ETABS
+2016 v16.1) instead. It does `CreateProcess` on the resolved
+LocalServer32 path directly, no DCOM class-factory dance:
+
+```csharp
+cOAPI etabs = helper.CreateObjectProgID("CSI.ETABS.API.ETABSObject");
+etabs.ApplicationStart();               // parameterless in v16.1+
+```
+
+`Helper.CreateObject(exePath)` (the older API) works too but forces
+you to hardcode the install path in code. `CreateObjectProgID` is
+version-agnostic and picks the newest install automatically.
+
+### `RuntimeBinderException: 'object' does not contain a definition for 'ApplicationStart'`
+
+Same explicit-interface-impl root cause as CS0122, at runtime. C#'s
+`dynamic` dispatch does public-member lookup on the runtime type;
+CSi's co-class doesn't expose the OAPI methods publicly. Drop
+`dynamic` and use the strong `cOAPI` / `cSapModel` / `cFile` /
+`cPointObj` types from `ETABSv1.dll` throughout. Enum arguments can
+be int-cast to keep the sample portable across the small
+enum-member-name drift CSi introduces between versions:
+
+```csharp
+Check(sap.LoadPatterns.Add("HELLO_DEAD", (eLoadPatternType)1, 0.0, true), "...");
+```
+
+### `LoadPatterns.Add("DEAD", ...)` returns `rc=1`
+
+Name conflict. `File.NewBlank()` on ETABS auto-creates `DEAD` and
+`LIVE` load patterns; adding another with the same name is rejected.
+Use a unique name (`HELLO_DEAD`, `MYLOAD`, …), or skip `Add` and use
+the existing patterns via `GetNameList`.
+
+### `CS1501: No overload for method 'ApplicationStart' takes 3 arguments`
+
+ETABS 2016 v16.1 made `ApplicationStart()` parameterless — no more
+`(eUnits, bool, string)`. Units are set separately via
+`SapModel.InitializeNewModel(eUnits.kip_in_F)` (or equivalent) right
+after. Same change applied across ETABS/SAP2000; check the CSi API
+manual (search *cHelper.CreateObjectProgID*) for the current shape.
+
+---
+
 ## Host performance regressions
 
 ### Guest CPU stutters on scene tumble

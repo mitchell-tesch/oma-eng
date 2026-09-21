@@ -71,9 +71,26 @@ guest load, or your Wayland session starts stuttering. So 32 GiB guest
 
 ## Licences and dongles
 
-Both vendors historically use **SentinelHASP** (formerly Aladdin) USB
-dongles. Both also offer network / cloud licence servers, and cloud
-options have grown in the last few years.
+CSi and StruSoft support several licence models, all of which work in
+this VM. In order of "just works":
+
+### CSiCloud / cloud licences (recommended in a VM)
+
+CSi has been pushing CSiCloud for new users. Same shape as Strand7's
+CLM (doc 07 §1): sign in through ETABS or SAP2000's licence dialog
+with your CSi account, tick *Remember me*, done. Snapshot reverts
+don't invalidate anything — the entitlement lives on CSi's side, not
+tied to a local machine ID.
+
+The libvirt default NAT gives the guest outbound HTTPS to CSi's cloud
+endpoint. If you followed [doc 02 §10](02-host-setup.md), UFW is
+already whitelisting `virbr0`; nothing extra to open.
+
+CSi's OAPI shares the licence pool with the GUI — running
+`dotnet run` against `HelloETABS.exe` (§ C# OAPI smoke test below)
+checks out a token the same way `ETABS.exe` does. Launch ETABS once
+to sign in, close it, and the API calls then work without further
+prompts.
 
 ### Physical dongles — pass through with libvirt
 
@@ -152,19 +169,26 @@ Point each app at the server via its usual licence configuration:
 
 ### CSiCloud / cloud licences
 
-CSi has been pushing CSiCloud for new users. Works fine in the VM:
-sign in through the app once, then it just runs. No dongle
-passthrough needed.
+See the top of this section — the recommended VM path is CSiCloud,
+covered there.
 
 ## Installing ETABS
 
 1. Download the ETABS installer from CSi's client portal to the
    Omarchy host, drop into `~/dev/oma-eng/src/vendor/`, and
    it appears at `Z:\vendor\` in the guest via virtiofs.
-2. Run the installer in the guest. Accept defaults.
-3. Install the Sentinel HASP runtime if not already present.
-4. Launch ETABS. Licence dialog picks up the dongle or lets you enter
-   the network server.
+2. Run the installer in the guest. Accept defaults. This repo's
+   default is ETABS 23 (`C:\Program Files\Computers and Structures\
+   ETABS 23\`); other versions (22, 24, …) install alongside without
+   conflict and share the same OAPI shape.
+3. Install the Sentinel HASP runtime only if your licence is
+   dongle-based. Skip for CSiCloud or Reprise (network) licences.
+4. Launch ETABS. Depending on licence model:
+   - **CSiCloud**: sign in with your CSi account; token cached for
+     future sessions and API calls.
+   - **HASP dongle**: picked up automatically once passed through.
+   - **Network licence**: enter the Reprise address
+     (`5054@license-host`) in the first-run licence dialog.
 5. *Options ▸ Preferences ▸ Dimensions/Tolerances ▸ Display Options*
    → enable OpenGL acceleration if not already on.
 6. Quick smoke test: *File ▸ New Model* → pick any grid → run the
@@ -173,12 +197,22 @@ passthrough needed.
 
 ### Verify GPU usage
 
-The `_SystemInfo`-equivalent in ETABS is *Help ▸ System Info*. It
-reports the OpenGL device — should read the Nvidia card.
+Same pattern as doc 07 §3 for Strand7. With ETABS open on a model,
+in an admin PowerShell inside the guest:
 
-If it reports *GDI Generic* or *Microsoft Basic Render Driver*, the
-QXL fallback adapter is still driving ETABS. Fix per doc 09
-(*Rhino uses Microsoft Basic Render Driver*) — the same steps apply.
+```powershell
+nvidia-smi
+```
+
+The *Processes* block should list `ETABS.exe`. GPU memory shows
+`N/A` under WDDM — expected, see [doc 09 § `nvidia-smi` shows
+`N/A`](09-troubleshooting.md). ETABS *Help ▸ System Info* also
+reports the OpenGL device but is less reliable on muxless-VDD
+setups; `nvidia-smi` is ground truth.
+
+If `ETABS.exe` isn't in the list, ETABS is on the QXL / Microsoft
+Basic Render Driver fallback. Fix per doc 09 (*Rhino uses Microsoft
+Basic Render Driver*) — the same steps apply.
 
 ## Installing SAP2000
 
@@ -207,8 +241,10 @@ same Reprise licence pool, same OAPI shape — with a ProgID swap.
 
 ### Verify GPU usage — SAP2000
 
-*Help ▸ About SAP2000* shows the OpenGL / DirectX renderer. Same
-Nvidia-vs-fallback check as ETABS.
+Same `nvidia-smi` check as ETABS: with SAP2000 open on a model,
+`SAP2000.exe` should show up in the *Processes* block (memory `N/A`
+under WDDM). *Help ▸ About SAP2000* reports the OpenGL / DirectX
+renderer as a secondary check.
 
 ## Installing SpaceGass
 
@@ -234,6 +270,70 @@ REST API that the samples in this repo target.
    `http://localhost:34560/swagger` for the interactive endpoint
    catalogue.
 
+## C# OAPI smoke test — ETABS
+
+Repo sample:
+[`src/etabs-api/csharp/HelloETABS/`](../src/etabs-api/csharp/HelloETABS/).
+Late-bound COM class factories fail on modern ETABS (see §API
+landscape below and doc 09), so the sample uses CSi's `Helper` +
+`CreateObjectProgID` pattern with strong `cOAPI` / `cSapModel` types
+from `ETABSv1.dll`. It builds a two-node cantilever column, applies
+a 10 kip horizontal load, runs linear-static, and prints the base
+reaction.
+
+From an interactive PowerShell in the guest (Looking Glass or VS Code
+Remote-SSH terminal — not plain `ssh windows-cad`):
+
+```powershell
+cd Z:\etabs-api\csharp\HelloETABS
+dotnet build -c Release
+dotnet run -c Release
+```
+
+The csproj references `ETABSv1.dll` from `$(ETABSInstallDir)`,
+defaulting to ETABS 23. Override for other versions:
+
+```powershell
+dotnet build -c Release -p:ETABSInstallDir="C:\Program Files\Computers and Structures\ETABS 22"
+```
+
+Expected output ending with:
+
+```
+Reaction @ '1' case 'HELLO_DEAD': Fx=-10 Fy=0 Fz=0  Mx=0 My=1440 Mz=0
+Hello from ETABS on Omarchy.
+```
+
+Fx = −10 kip (equal-and-opposite to the applied load) and My = 1440
+kip·in (10 kip × 144 in column) confirm the whole pipeline is wired
+correctly. ETABS launches visibly, runs the analysis, then exits.
+
+**F5 debug from VS Code** — the sample ships
+[`.vscode/launch.json`](../src/etabs-api/csharp/HelloETABS/.vscode/launch.json),
+[`tasks.json`](../src/etabs-api/csharp/HelloETABS/.vscode/tasks.json),
+and [`extensions.json`](../src/etabs-api/csharp/HelloETABS/.vscode/extensions.json).
+Remote-SSH into the guest, open `Z:\etabs-api\csharp\HelloETABS`,
+accept the Dev Kit recommendation, wait for solution restore, F5.
+Same as HelloStrand7 / HelloRhino — see [doc 07 §8](07-strand7-setup.md)
+for the flow.
+
+### Porting to SAP2000
+
+Three changes to `HelloETABS/Program.cs`:
+
+```csharp
+// Before (ETABS):                        // After (SAP2000):
+using ETABSv1;                            using SAP2000v1;
+"CSI.ETABS.API.ETABSObject"               "CSI.SAP2000.API.SapObject"
+@"...\HelloETABS_scratch.edb"             @"...\HelloSAP2000_scratch.sdb"
+```
+
+And the csproj `ETABSInstallDir` becomes `SAPInstallDir` pointing at
+your `SAP2000 26\` (or later) install with a `<Reference>` to
+`SAP2000v1.dll`. Everything else — `PointObj.AddCartesian`,
+`FrameObj.AddByPoint`, `Analyze.RunAnalysis`, `Results.JointReact` —
+compiles unchanged.
+
 ## API landscape
 
 ### ETABS — OAPI
@@ -246,8 +346,15 @@ samples ship under `C:\Program Files\Computers and Structures\ETABS
 22\API\` — clone one of those as a starting point.
 
 **Interop namespace when you reference `ETABSv1.dll` directly:**
-`CSiAPIv1` (shared with SAP2000). Interfaces `cHelper`, `cOAPI`,
-`cSapModel`; instantiate the concrete class `Helper` to bootstrap.
+`ETABSv1` (per-app; SAP2000 uses `SAP2000v1`, which is confusingly
+not the same as the older CSi convention). Interfaces `cHelper`,
+`cOAPI`, `cSapModel`; instantiate the concrete class `Helper` to
+bootstrap. Note: `Helper`'s methods are explicit `cHelper`
+implementations, so the local must be typed as `cHelper` (not `var`
+or `Helper`) to access `CreateObjectProgID`. Same rule applies to
+every method on `cOAPI` / `cSapModel` — use the interface types, not
+the co-classes, and don't try to drive them through `dynamic`
+(the runtime binder can't see explicit interface members).
 
 **Object model root:**
 `cOAPI` (app object) → `SapModel` (main model interface) → sub-interfaces
@@ -268,13 +375,13 @@ samples ship under `C:\Program Files\Computers and Structures\ETABS
 **Typical pattern:**
 
 ```csharp
-using CSiAPIv1;                         // when referencing the DLL
+using ETABSv1;                          // when referencing the DLL
 
 // cHelper is an interface; Helper is the concrete class.
 cHelper helper = new Helper();
 cOAPI etabs = helper.CreateObjectProgID("CSI.ETABS.API.ETABSObject")
     ?? throw new InvalidOperationException("ETABS COM object not found.");
-etabs.ApplicationStart();
+etabs.ApplicationStart();                     // parameterless since v16.1
 cSapModel model = etabs.SapModel;
 model.InitializeNewModel(eUnits.kip_in_F);   // eUnits.kip_in_F = 3
 model.File.NewBlank();
@@ -293,8 +400,8 @@ Three concrete differences:
 |---|---|---|
 | **Interop DLL** | `ETABSv1.dll` | `SAP2000v1.dll` |
 | **ProgID** (late-bound COM) | `CSI.ETABS.API.ETABSObject` | `CSI.SAP2000.API.SapObject` |
-| **Interop namespace** (shared) | `CSiAPIv1` | `CSiAPIv1` |
-| **Install path** | `C:\Program Files\Computers and Structures\ETABS 22\` | `C:\Program Files\Computers and Structures\SAP2000 26\` |
+| **Interop namespace** | `ETABSv1` | `SAP2000v1` |
+| **Install path** | `C:\Program Files\Computers and Structures\ETABS 23\` | `C:\Program Files\Computers and Structures\SAP2000 26\` |
 | **Model file extension** | `.edb` | `.sdb` |
 
 Any code targeting `cSapModel` sub-interfaces (`PointObj`,
@@ -433,16 +540,18 @@ easy:
 
 - ETABS, SAP2000 (if installed), and SPACE GASS installed and
   licensed inside the guest.
-- All report the Nvidia GPU in their graphics preferences panels.
-- ETABS *Help ▸ System Info* shows OpenGL renderer = Nvidia card;
-  SAP2000 *Help ▸ About SAP2000* likewise.
+- `nvidia-smi` in an admin PowerShell in the guest lists `ETABS.exe`
+  (and `SAP2000.exe`, `SpaceGass.exe` if you also have those
+  running) under *Processes* while each app is on a model. Memory
+  shows `N/A` under WDDM — expected, see doc 09.
 - A test analysis in each completes with expected wall times (linear
   static on a small frame: sub-second).
-- If you plan to use API automation: `ETABSv1.dll` / `SAP2000v1.dll`
-  are reachable and CSi's licence server / dongle answers when the
-  API starts a session (this consumes a licence just like the GUI
-  does); and `curl http://localhost:34560/api/v1/service/info` from
-  an admin PowerShell in the guest returns a 200 response with a
-  SPACE GASS version string.
+- If you plan to use API automation:
+  [`src/etabs-api/csharp/HelloETABS`](../src/etabs-api/csharp/HelloETABS/)
+  builds and `dotnet run -c Release` prints the base-reaction line
+  ending in `Hello from ETABS on Omarchy.` (see § C# OAPI smoke
+  test above); and `curl http://localhost:34560/api/v1/service/info`
+  from an admin PowerShell in the guest returns a 200 response with
+  a SPACE GASS version string.
 
 Continue to [12 — Revit + Rhino.Inside.Revit + pyRevit](12-revit-and-rhino-inside.md).

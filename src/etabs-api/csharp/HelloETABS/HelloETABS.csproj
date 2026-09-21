@@ -10,11 +10,22 @@
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
     <Version>0.1.0</Version>
-    <Title>Hello ETABS 22 (oma-eng)</Title>
-    <Description>Smallest possible ETABS 22 OAPI sample via late-bound COM.</Description>
+    <Title>Hello ETABS (oma-eng)</Title>
+    <Description>Smallest possible ETABS OAPI sample via ETABSv1.dll interop.</Description>
+
+    <!--
+      ETABSv1.dll is version-specific and lives inside the ETABS install.
+      Default targets ETABS 23; override on the build line with
+      -p:ETABSInstallDir="C:\Program Files\Computers and Structures\ETABS 22"
+      (or 24, etc.) if you're on a different point release.
+    -->
+    <ETABSInstallDir Condition=" '$(ETABSInstallDir)' == '' ">C:\Program Files\Computers and Structures\ETABS 23</ETABSInstallDir>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
+    <Reference Include="ETABSv1">
+      <HintPath>$(ETABSInstallDir)\ETABSv1.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
   </ItemGroup>
 </Project>
