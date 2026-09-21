@@ -162,6 +162,15 @@ For Python, install the *Python* extension in the remote window; the
 default *Debug Current File* config works. Set `"justMyCode": false` in
 `launch.json` if you want to step into `pywin32`.
 
+> **Python + virtiofs caveat.** Setting breakpoints in a `.py` file
+> under `Z:\` fails with `OSError: [WinError 1005]` — `debugpy` calls
+> `os.path.realpath()` and WinFsp doesn't implement the underlying
+> Win32 volume-info FSCTL. For breakpoint-driven Python debug, mirror
+> the folder to a local NTFS path in the guest first:
+> `robocopy Z:\<project> C:\dev\<project> /MIR`, then open the C:\
+> copy in Remote-SSH. C# / `coreclr` is unaffected. Full detail in
+> [doc 09 § Python debugger fails with `[WinError 1005]`](09-troubleshooting.md).
+
 ## Source control
 
 Do all your `git` on **Omarchy** (or in a WSL if you insist — but there

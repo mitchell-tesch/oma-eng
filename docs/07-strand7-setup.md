@@ -11,13 +11,43 @@ guest, (b) verifying OpenGL uses the passed-through Nvidia GPU, and
 
 ## 1. Licence considerations
 
-Three common licence models for Strand7 R3 — each has a wrinkle in a VM:
+Four licence models for Strand7 R3 — each has a wrinkle in a VM:
 
 | Licence | Works in this VM? | Notes |
 |---|---|---|
-| **HASP USB dongle** | ✅ Yes | Pass the USB dongle through with `<hostdev>` `<vendor/product>` in libvirt. Also install the HASP runtime in the guest. |
+| **Cloud licence** (Strand7 CLM) | ✅ Yes — recommended | Sign in through Strand7 with your Strand7 CLM account. The guest just needs outbound HTTPS, which the libvirt default NAT already provides. No dongle, no host-side setup, no reactivation on XML edits. |
+| **HASP USB dongle** | ✅ Yes | Pass the USB dongle through with `<hostdev>` `<vendor/product>` in libvirt. Also install the Sentinel HASP runtime in the guest. |
 | **Network licence** (Sentinel / Strand7 licence server) | ✅ Yes | Just make sure the guest can route to the licence server on your LAN. `virsh net-dhcp-leases default` for the guest IP if the server has an allow-list. |
-| **Node-locked** (older machine-ID lock) | ⚠️ Maybe | The machine ID changes when the guest's virtual hardware changes. Re-activate with Strand7 support after any big XML edit. Best to move to network or dongle if you can. |
+| **Node-locked** (older machine-ID lock) | ⚠️ Maybe | The machine ID changes when the guest's virtual hardware changes. Re-activate with Strand7 support after any big XML edit. Best to move to cloud, network, or dongle if you can. |
+
+### Cloud licence — the easy path in a VM
+
+Strand7 R3 introduced cloud licencing (managed via the Strand7 Cloud
+Licence Manager, CLM). On first launch of Strand7 R3 the licence dialog
+offers *Cloud Licence* — enter the email + password issued to you by
+Strand7 Pty Ltd, tick *Remember me*, and you're in. Strand7 caches the
+sign-in for subsequent launches.
+
+Practical notes for this VM:
+
+- **No host-side setup**. The libvirt default NAT gives the guest
+  outbound HTTPS to `*.strand7.com` for free. If you followed
+  [doc 02 §10](02-host-setup.md), UFW is already whitelisting
+  `virbr0`, so nothing to open.
+- **API uses the same licence pool.** `St7Init()` in the Python and
+  C# samples below acquires a licence via the same CLM sign-in as
+  `Strand7.exe`. Launch Strand7 once, sign in, close it — the API
+  samples then work with no extra credentials.
+- **Offline → licence error.** If you're on a plane or the host has
+  no Internet, `St7Init()` returns an "unable to acquire licence"
+  error. Bring the network back and retry; Strand7 supports
+  short-term offline via CLM but the exact policy is set on your
+  account, not in the client. See the [Strand7 R3 CLM Setup
+  Guide](https://www.strand7.com/r3/Strand7%20R3%20CLM%20Setup%20Guide.pdf).
+- **Snapshot revert is safe.** Unlike node-locked, reverting to an
+  earlier VM snapshot does not invalidate a cloud licence — the
+  entitlement lives on Strand7's side, not tied to any local
+  machine ID.
 
 ### USB HASP dongle passthrough (if applicable)
 
@@ -60,41 +90,61 @@ Strand7 installer, or from Thales' website).
 
 ## 2. Install Strand7 R3
 
-Standard Windows installer. The install path is version-specific:
-`C:\Program Files\Strand7 R31\` for R3.1 releases (current), with the
-API DLL at `C:\Program Files\Strand7 R31\Bin64\St7API.dll`. The
-samples in this repo default to that path — set the `STRAND7_DIR`
-environment variable to override.
+Standard Windows installer. Grab it from the Strand7 downloads page
+(needs your Strand7 Support & Maintenance login). The install path is
+version-specific: `C:\Program Files\Strand7 R31\` for R3.1 releases
+(currently R3.1.8), with the API DLL at
+`C:\Program Files\Strand7 R31\Bin64\St7API.dll`. The samples in this
+repo default to that path — set the `STRAND7_DIR` environment
+variable to override.
 
 If your Strand7 installer is on the Omarchy host, drop it into
 `~/src/oma-eng/src/vendor/` and it appears at `Z:\vendor\` in the
 guest. Run it from there.
 
+On first launch of Strand7 R3, the licence dialog offers the four
+models from §1. Pick *Cloud Licence* and sign in with your CLM
+credentials once — the sign-in persists across launches, snapshot
+reverts, and API calls.
+
 ## 3. Verify graphics
 
-Launch Strand7. Open a shipped sample from `File ▸ Open Sample`
-(typical samples: `TESTOGL.ST7` for the graphics test scene,
-`Truss.ST7` for a small linear-static model — actual samples vary
-by installer options). Rotate/tumble in the model
-window — motion should be smooth at monitor refresh with no visible tears.
+Launch Strand7, `File ▸ Open` a model (either a shipped sample from the
+Strand7 install's `Samples\` folder, or drop one of your own into
+`~/dev/oma-eng/src/vendor/` on the host — it appears at `Z:\vendor\` in
+the guest). Rotate/tumble the model — motion should be smooth at
+monitor refresh with no visible tears.
 
-*Tools ▸ Preferences ▸ Graphics*:
+Strand7 R3 does not surface a *Graphics engine / Renderer* pane the way
+R2 did — R3 uses hardware-accelerated 3D by default and picks up the
+DXGI-primary GPU without user intervention. The reliable check is on
+the OS side. In an admin PowerShell inside the guest, with Strand7
+sitting on a model view:
 
-- **Graphics engine**: `OpenGL`
-- **Renderer**: should read `NVIDIA GeForce RTX ...` — matches the dGPU.
-- If it reads `GDI Generic`, Strand7 is on the QXL fallback; see doc 09.
+```powershell
+nvidia-smi
+```
 
-Run the shipped `TESTOGL.ST7` scene (`File ▸ Open Sample ▸ TESTOGL.ST7`)
-and step through the display test — nothing should stutter.
+The `Processes` block should list `Strand7.exe` with non-zero
+`GPU Memory Usage`. If it does, viewport draws are on the passthrough
+Nvidia GPU — done.
+
+If `Strand7.exe` is missing from that list, the app is on the QXL /
+Microsoft Basic Render Driver fallback. Cross-check via Task Manager
+→ *Performance* tab → *GPU* — an idle-looking Nvidia graph while
+you spin the Strand7 model confirms the fallback. See doc 09 *Rhino
+uses Microsoft Basic Render Driver* for the same fix (disable the
+basic display adapter in Device Manager, restart Strand7).
 
 ## 4. Confirm the solver uses all guest cores
 
-Strand7 solvers respect thread count from *Tools ▸ Preferences ▸ Solvers
-▸ Threads*. Set it to the number of vCPUs you allocated to the guest
-(matching your CPU pinning in doc 03).
-
-Bench with the shipped `LSA-Beam.ST7` or one of your own linear-static
-models; runtimes should scale linearly with allocated cores.
+Strand7 solvers respect thread count from the solver's own
+*Parameters* dialog when you kick off a solve (`Solver ▸ Linear Static
+▸ Parameters`, etc. — location moved around in R3 vs R2 but the
+*Number of threads* input is always on the first parameters page).
+Set it to the number of vCPUs allocated to the guest — 10 on this
+setup, matching the pinning in doc 03. Global default lives in
+Strand7's preferences (menu label depends on R3.1.x version).
 
 ## 5. Locate the API DLL
 
@@ -144,7 +194,9 @@ py Z:\strand7-api\python\hello_strand7.py
 
 Standard-library only — `ctypes` ships with Python, no `pip install`
 needed. If the script exits with `St7API.dll not found`, check the
-`STRAND7_DIR` env var (see §5).
+`STRAND7_DIR` env var (see §5). If it exits with a Strand7 licence
+error out of `St7Init`, see §1 (cloud users: sign in via `Strand7.exe`
+first; offline hosts have no cloud-licence checkout).
 
 ## 7. C# smoke test
 
@@ -164,14 +216,55 @@ The project is x64-only (Strand7 R3 ships a 64-bit DLL). If you get a
 
 ## 8. Debug workflow from VS Code (on Omarchy)
 
-Same story as the Rhino docs — VS Code Remote-SSH into the guest, F5 to
-launch or attach:
+VS Code Remote-SSH into the guest, then F5. Each sample ships its own
+`.vscode/` directory so first-time setup is one open + one F5.
 
-- For **Python**, use the standard *Python: Current File* debug
-  configuration. Set breakpoints on the Omarchy side; they hit in the
-  guest.
-- For **C#**, use the *.NET: Launch* configuration in the template (this
-  runs the just-built `HelloStrand7.exe`).
+1. In VS Code on Omarchy → *Remote Explorer* → *SSH* → `windows-cad` →
+   *Connect in New Window*.
+2. In the new (green) window: *File ▸ Open Folder* → paste
+   `Z:\strand7-api\csharp\HelloStrand7` (or `Z:\strand7-api\python`
+   for the Python sample).
+3. VS Code prompts to install the recommended extensions from the
+   shipped `.vscode/extensions.json` on the remote server. Accept once.
+4. Set breakpoints in the source; press F5.
+
+**Python** —
+[`src/strand7-api/python/.vscode/launch.json`](../src/strand7-api/python/.vscode/launch.json)
+ships a `Python: hello_strand7` config. First run in a fresh guest
+prompts VS Code to install `debugpy` into the selected Python — say yes.
+
+> **Caveat — debug from a local NTFS copy, not `Z:\`.** Setting
+> breakpoints in a Python file that lives on `Z:\` fails with
+> `[WinError 1005] The volume does not contain a recognized file
+> system`. `debugpy` canonicalises every breakpoint path through
+> `os.path.realpath()` → `_getfinalpathname()`, and WinFsp (the driver
+> that surfaces virtiofs to Windows) doesn't implement the volume-info
+> FSCTL that Win32 call needs. C# / `coreclr` doesn't take this path,
+> which is why the C# sample debugs fine from `Z:\`. Fix — mirror the
+> Python folder to a local NTFS path in the guest before debugging:
+>
+> ```powershell
+> robocopy Z:\strand7-api\python C:\dev\strand7-api\python /MIR
+> ```
+>
+> Open `C:\dev\strand7-api\python` in VS Code Remote-SSH, F5 there.
+> Re-run the `robocopy` to freshen from Omarchy. For a *smoke-test* run
+> (no breakpoints), `py Z:\strand7-api\python\hello_strand7.py` from
+> §6 keeps working — the caveat is debug-only. See
+> [doc 09 § Python debugger fails with `[WinError 1005]`](09-troubleshooting.md).
+
+**C#** —
+[`src/strand7-api/csharp/HelloStrand7/.vscode/launch.json`](../src/strand7-api/csharp/HelloStrand7/.vscode/launch.json)
+ships a `Launch HelloStrand7` config with a `preLaunchTask: build`
+that runs `dotnet build -c Debug` first (see
+[`.vscode/tasks.json`](../src/strand7-api/csharp/HelloStrand7/.vscode/tasks.json)).
+F5 builds, launches `HelloStrand7.exe` under `coreclr`, and stops on
+your breakpoints. If the C# Dev Kit hasn't finished restoring the
+project yet you'll see a *couldn't find debug config* toast — wait for
+the *Loading solution* status bar to clear and F5 again.
+
+Both configs use `${workspaceFolder}`, so they also work if you clone
+the repo directly onto a real Windows workstation later.
 
 ## 9. Snapshot
 
@@ -182,8 +275,10 @@ virsh --connect qemu:///system snapshot-create-as windows-cad rhino-strand7 \
 
 ## Exit criteria
 
-- Strand7 → *Preferences ▸ Graphics* shows the Nvidia GPU as renderer.
-- `TESTOGL.ST7` runs smooth at monitor refresh.
+- `nvidia-smi` in the guest lists `Strand7.exe` under *Processes* with
+  non-zero GPU memory usage while a model is open.
+- Tumbling a shipped sample or one of your own models is smooth at
+  monitor refresh.
 - Solver thread count is set and a benchmark model finishes with
   expected wall time.
 - `hello_strand7.py` from the samples completes without DLL-loading

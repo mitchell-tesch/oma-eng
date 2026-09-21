@@ -1,0 +1,13 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: hello_strand7",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/hello_strand7.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}

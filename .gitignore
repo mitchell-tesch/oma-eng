@@ -9,7 +9,11 @@ obj/
 
 # Editors / OS
 .vs/
-.vscode/
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json
+!.vscode/settings.json
 .idea/
 *.user
 *.suo
@@ -40,6 +44,18 @@ configs/**/*.local
 *.local.conf
 license/
 *.lic
+
+# Guest-shared drop zones (installers, models, scratch data)
+# Guest sees `~/dev/oma-eng/src/` as `Z:\`. These subdirs are for
+# transferring binary blobs into the guest — never commit their contents.
+src/vendor/
+src/scratch/
+
+# Strand7 / FEA working files
+*.st7
+*.ST7
+*.slog
+*.SLOG
 
 # Python
 __pycache__/

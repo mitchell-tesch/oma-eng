@@ -295,6 +295,26 @@ If absent, the `<hostdev>` USB IDs are wrong or the dongle was plugged
 in after VM start. `virsh --connect qemu:///system attach-device
 windows-cad configs/libvirt/hasp-dongle.xml` to hot-attach.
 
+### Cloud licence — `St7Init` returns a licence error
+
+Three usual causes, in likelihood order:
+
+1. **Not signed in yet.** Launch `Strand7.exe` in the guest, sign in
+   at the Cloud Licence dialog with your CLM email + password, tick
+   *Remember me*, close Strand7. Re-run the API sample.
+2. **No outbound Internet from the guest.** Check `ping www.strand7.com`
+   from an admin PowerShell in the guest. If it fails, the host UFW
+   rule for `virbr0` is likely missing — see [doc 02 §10](02-host-setup.md).
+3. **Corporate proxy in the way.** Strand7's CLM talks HTTPS to
+   Strand7 Pty Ltd's cloud endpoint. If your host is behind an HTTPS
+   proxy that requires auth, the guest inherits neither the proxy
+   settings nor the credentials. Set Windows-side proxy config in the
+   guest via *Settings ▸ Network & Internet ▸ Proxy*, or route the
+   host's proxy through the libvirt NAT.
+
+If Strand7 R3 itself launches fine and holds a cloud licence, the API
+will too — they share the same CLM sign-in.
+
 ### Solver runs on one thread
 
 *Tools ▸ Preferences ▸ Solvers ▸ Threads* — set to allocated vCPUs.
@@ -303,6 +323,51 @@ windows-cad configs/libvirt/hasp-dongle.xml` to hot-attach.
 
 Same as Rhino: QXL vs Nvidia. See "Rhino uses Microsoft Basic Render
 Driver" above.
+
+---
+
+## Python
+
+### Debugger fails with `[WinError 1005]` on `Z:\`
+
+Symptom — F5 on a Python file under `Z:\` (VS Code Remote-SSH into the
+guest) prints many copies of:
+
+```
+Error adding watch dir: Z:\...
+OSError: [WinError 1005] The volume does not contain a recognized file
+system. Please make sure that all required file system drivers are
+loaded and that the volume is not corrupted: 'Z:\\...'
+```
+
+and no breakpoints bind, though the script itself runs to completion.
+
+Cause — `debugpy` canonicalises every path it sees (script, watch
+dirs, breakpoints) via `os.path.realpath()`, which on Windows Python
+3.10+ calls `_getfinalpathname` → `GetFinalPathNameByHandle`. WinFsp
+(the driver virtiofs uses to expose `Z:\` to Windows) doesn't
+implement the volume-info FSCTLs that Win32 call needs, so it returns
+error 1005. Nothing in the Python or `debugpy` config knobs bypasses
+this.
+
+Not a Strand7 issue — this affects any `.py` file under `Z:\` on this
+setup. C# / `coreclr` debugger uses raw paths and is unaffected. And
+plain `py Z:\...\script.py` from PowerShell (no debugger) also works
+because the script code doesn't itself call `realpath` on its own
+directory.
+
+Fix — mirror the folder to a local NTFS path in the guest and debug
+from there:
+
+```powershell
+robocopy Z:\<project> C:\dev\<project> /MIR
+```
+
+Open `C:\dev\<project>` in VS Code Remote-SSH and F5. Re-run the
+`robocopy` any time the Omarchy-side source changes. For Python
+projects driven by `uv` (`office-integration`, `spacegass-api`), also
+run `uv sync` in the local copy — the `.venv` shouldn't be mirrored
+from `Z:\`.
 
 ---
 
