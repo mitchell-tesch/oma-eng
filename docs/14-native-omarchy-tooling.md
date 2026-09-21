@@ -152,14 +152,17 @@ line-by-line.
 
 ### Install
 
-```bash
-python -m pip install --user jupyterlab handcalcs forallpeople
-```
-
-Or use `uv` for a faster resolve:
+Primary (uv — fast resolve, no venv activation dance; install with
+`sudo pacman -S uv`):
 
 ```bash
 uv pip install --user jupyterlab handcalcs forallpeople
+```
+
+Fallback (system pip):
+
+```bash
+python -m pip install --user jupyterlab handcalcs forallpeople
 ```
 
 ### Example — plastic-moment capacity of a beam

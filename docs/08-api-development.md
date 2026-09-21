@@ -48,7 +48,8 @@ src/
 ├── office-integration/          Excel automation from Rhino and Strand7
 │   ├── python/
 │   │   ├── strand7_to_excel.py
-│   │   └── requirements.txt
+│   │   ├── pyproject.toml
+│   │   └── uv.lock
 │   └── csharp/
 │       └── RhinoToExcel/         Rhino _RhinoToExcel command
 │           ├── RhinoToExcelPlugin.cs
@@ -63,7 +64,8 @@ src/
     ├── python/
     │   ├── hello_spacegass.py
     │   ├── hello_spacegass_analysis.py
-    │   └── requirements.txt
+    │   ├── pyproject.toml
+    │   └── uv.lock
     └── csharp/
         └── HelloSpaceGass/
             ├── Program.cs
@@ -78,30 +80,48 @@ Open the whole tree remote:
 code --remote ssh-remote+windows-cad ~/src/oma-eng/src
 ```
 
-The `src/` folder in the remote window is `Z:\src\oma-eng\src\` (via
+The `src/` folder in the remote window is `Z:\` (via
 virtiofs), which is the same inode as `~/src/oma-eng/src` on the
 host. Edit either place, the other sees it. This is not sync — it's the
 same file.
+
+**SSH-session `Z:` caveat** — VirtIO-FS Service mounts `Z:` per
+interactive user session. Plain `ssh windows-cad` opens a
+non-interactive session that doesn't inherit that mapping, so
+`dir Z:\` errors with *"The system cannot find the path specified."*
+Workarounds:
+
+- **VS Code Remote-SSH** does inherit `Z:` (it starts a full
+  interactive session for the remote server), so building and
+  running via VS Code works.
+- **Plain SSH**: run the command through PowerShell's user-session
+  helper, e.g. `ssh windows-cad "powershell -Command 'net use Z: /persistent:no & cd Z:\\src\\... & dotnet build'"`
+  — or add a persistent `net use` in a Task Scheduler *At log on*
+  task that runs at boot with the SYSTEM account.
+
+Both `uv sync` and `dotnet build` in the samples below assume you
+launched them from an interactive session (Remote-SSH or a Looking
+Glass PowerShell) rather than plain `ssh windows-cad`.
 
 ### Building
 
 ```powershell
 # In the guest, via SSH or Remote-SSH terminal
-cd Z:\src\oma-eng\src\rhino-plugin
+cd Z:\rhino-plugin
 dotnet build -c Debug
 ```
 
 For Grasshopper components:
 
 ```powershell
-cd Z:\src\oma-eng\src\grasshopper-component
+cd Z:\grasshopper-component
 dotnet build -c Debug
 ```
 
 For the Strand7 C# sample:
 
 ```powershell
-cd Z:\src\oma-eng\src\strand7-api\csharp\HelloStrand7
+cd Z:\strand7-api\csharp\HelloStrand7
 dotnet build -c Release
 ```
 

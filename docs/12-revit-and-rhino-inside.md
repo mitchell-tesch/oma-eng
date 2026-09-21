@@ -176,7 +176,7 @@ extension out to the virtiofs share so you can edit on Omarchy:
 # In the guest, admin PowerShell:
 New-Item -ItemType SymbolicLink `
     -Path "$env:APPDATA\pyRevit-Master\extensions\MyTools.extension" `
-    -Target "Z:\src\oma-eng\src\pyrevit-extensions\MyTools.extension"
+    -Target "Z:\pyrevit-extensions\MyTools.extension"
 ```
 
 Then edit `script.py` files on Omarchy — pyRevit's *Reload* button

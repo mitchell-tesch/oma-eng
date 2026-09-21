@@ -28,52 +28,52 @@ Open a PowerShell in the guest (or an SSH session from Omarchy):
 
 ```powershell
 # Rhino plugin
-cd Z:\src\oma-eng\src\rhino-plugin
+cd Z:\rhino-plugin
 dotnet build -c Debug
 # Then in Rhino: drag-and-drop the .rhp onto Rhino, or
 #   _-LoadPlugIn "bin\Debug\net7.0-windows\HelloRhino.rhp"
 # Type: _HelloRhino
 
 # Grasshopper component
-cd Z:\src\oma-eng\src\grasshopper-component
+cd Z:\grasshopper-component
 dotnet build -c Debug
 Copy-Item bin\Debug\net7.0-windows\HelloGh.gha $env:APPDATA\Grasshopper\Libraries\
 
 # Strand7 Python
-cd Z:\src\oma-eng\src\strand7-api\python
+cd Z:\strand7-api\python
 py hello_strand7.py
 
 # Strand7 C#
-cd Z:\src\oma-eng\src\strand7-api\csharp\HelloStrand7
+cd Z:\strand7-api\csharp\HelloStrand7
 dotnet run -c Release
 
-# Strand7 -> Excel (Python + xlwings)
-cd Z:\src\oma-eng\src\office-integration\python
-py -m pip install --user -r requirements.txt
-py strand7_to_excel.py
+# Strand7 -> Excel (Python + xlwings, managed with uv)
+cd Z:\office-integration\python
+uv sync
+uv run strand7_to_excel.py
 
 # Rhino -> Excel (C# Rhino command via late-bound COM)
-cd Z:\src\oma-eng\src\office-integration\csharp\RhinoToExcel
+cd Z:\office-integration\csharp\RhinoToExcel
 dotnet build -c Debug
 # Then in Rhino: drag-and-drop the .rhp onto Rhino, or
 #   _-LoadPlugIn "bin\Debug\net7.0-windows\RhinoToExcel.rhp"
 # Type: _RhinoToExcel  (nothing selected = whole document; or select first)
 
 # ETABS 22 OAPI (C# console)
-cd Z:\src\oma-eng\src\etabs-api\csharp\HelloETABS
+cd Z:\etabs-api\csharp\HelloETABS
 dotnet run -c Release
 
-# SPACE GASS 14.5+ REST API — quick start (Python)
+# SPACE GASS 14.5+ REST API — quick start (Python via uv)
 # First: start SpaceGassApi.exe in the guest.
-cd Z:\src\oma-eng\src\spacegass-api\python
-py -m pip install --user -r requirements.txt
-py hello_spacegass.py
+cd Z:\spacegass-api\python
+uv sync
+uv run hello_spacegass.py
 
 # SPACE GASS 14.5+ REST API — run linear-static + reactions (Python)
-py hello_spacegass_analysis.py
+uv run hello_spacegass_analysis.py
 
 # SPACE GASS 14.5+ REST API — C# equivalent
-cd Z:\src\oma-eng\src\spacegass-api\csharp\HelloSpaceGass
+cd Z:\spacegass-api\csharp\HelloSpaceGass
 dotnet run
 ```
 

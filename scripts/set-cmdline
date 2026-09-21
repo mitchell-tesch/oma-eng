@@ -1,0 +1,301 @@
+#!/usr/bin/env bash
+# set-cmdline — idempotently edit the kernel command line on Omarchy/Arch
+# to add the tokens VFIO needs (IOMMU + hugepages). Backs up the target
+# file before touching it.
+#
+# Order of preference for the source of truth:
+#   1. /etc/limine-entry-tool.d/vfio.conf on Omarchy 4.x hosts where
+#      /etc/default/limine defines KERNEL_CMDLINE[default]. That variable
+#      is the ONLY input to limine-entry-tool at UKI-build time;
+#      /etc/kernel/cmdline is completely ignored on such systems even
+#      though it looks like it should work. Written as a drop-in that
+#      appends our tokens with `KERNEL_CMDLINE[default]+= "..."`.
+#   2. /etc/kernel/cmdline (Arch with limine-mkinitcpio-hook on a non-
+#      Omarchy setup, or plain kernel-install). limine-update reads this.
+#   3. systemd-boot entries (/boot/loader/entries/*_linux.conf).
+#   4. GRUB (/etc/default/grub GRUB_CMDLINE_LINUX_DEFAULT).
+#   5. Direct limine.conf entries (hand-maintained setups).
+#
+# What it does:
+#   1. Detects CPU vendor and picks intel_iommu=on / amd_iommu=on.
+#   2. Merges the desired tokens into the existing cmdline WITHOUT
+#      duplicating tokens or dropping existing ones. Any pre-existing
+#      hugepages=N is replaced by the target value; other tokens are
+#      appended if absent.
+#   3. Writes a timestamped .bak next to the target file.
+#   4. Runs `limine-update` when it edits /etc/kernel/cmdline on a system
+#      where limine-mkinitcpio-hook is installed, so the change lands in
+#      /boot/limine.conf immediately. Skip with --no-regen.
+#
+# Usage:
+#     scripts/set-cmdline --status               # what's on the running kernel?
+#     sudo ./scripts/set-cmdline --dry-run       # show the diff
+#     sudo ./scripts/set-cmdline                 # apply (24 GiB hugepages)
+#     sudo ./scripts/set-cmdline --hugepages 32  # override hugepage count
+#     sudo ./scripts/set-cmdline --no-regen      # skip limine-update
+
+set -euo pipefail
+
+hugepages=24
+dry=0
+show_status=0
+regen=1
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run)     dry=1; shift ;;
+        --status)      show_status=1; shift ;;
+        --no-regen)    regen=0; shift ;;
+        --hugepages)   hugepages="${2:?--hugepages needs an integer}"; shift 2 ;;
+        --hugepages=*) hugepages="${1#*=}"; shift ;;
+        -h|--help)     sed -n '2,36p' "$0"; exit 0 ;;
+        *)             echo "Unknown arg: $1" >&2; exit 2 ;;
+    esac
+done
+
+if ! [[ "$hugepages" =~ ^[0-9]+$ ]] || (( hugepages < 4 || hugepages > 512 )); then
+    echo "Invalid --hugepages value: $hugepages (expected integer 4..512)" >&2
+    exit 2
+fi
+
+# --- CPU vendor ------------------------------------------------------------
+cpu_vendor="$(awk -F: '/vendor_id/ {gsub(/ /,"",$2); print $2; exit}' /proc/cpuinfo)"
+case "$cpu_vendor" in
+    GenuineIntel) iommu_param="intel_iommu=on" ;;
+    AuthenticAMD) iommu_param="amd_iommu=on"   ;;
+    *) echo "Unknown CPU vendor: $cpu_vendor" >&2; exit 2 ;;
+esac
+
+# Tokens to enforce. hugepages= last so replacement is obvious.
+desired=(
+    "$iommu_param"
+    "iommu=pt"
+    "default_hugepagesz=1G"
+    "hugepagesz=1G"
+    "hugepages=$hugepages"
+)
+
+# --- --status short-circuit -------------------------------------------------
+if [[ $show_status -eq 1 ]]; then
+    printf 'Current /proc/cmdline:\n  %s\n\n' "$(cat /proc/cmdline)"
+    for tok in "${desired[@]}"; do
+        key="${tok%%=*}"
+        cur="$(grep -oE "\b${key}=[^ ]+" /proc/cmdline | head -n1 || true)"
+        if [[ -n "$cur" ]]; then
+            if [[ "$cur" == "$tok" ]]; then
+                printf '  ok   %s (present)\n' "$tok"
+            else
+                printf '  diff %s (currently: %s)\n' "$tok" "$cur"
+            fi
+        else
+            printf '  miss %s\n' "$tok"
+        fi
+    done
+    exit 0
+fi
+
+# --- Root check ------------------------------------------------------------
+# /etc/kernel/cmdline is root:root 644, /boot/loader/entries is root-only.
+# Require sudo up front rather than prompt mid-script (which trips
+# fingerprint readers and pkexec).
+if [[ $EUID -ne 0 ]]; then
+    echo "This step needs to write /etc/kernel/cmdline (or /boot/) files."
+    echo "Re-run under sudo:"
+    echo
+    echo "    sudo ./scripts/set-cmdline [--dry-run] [--hugepages N] [--no-regen]"
+    echo
+    echo "(Use 'scripts/set-cmdline --status' without sudo to see which tokens"
+    echo "are already present on the running kernel — that only reads /proc/cmdline.)"
+    exit 4
+fi
+
+# --- Target detection ------------------------------------------------------
+target=""
+target_kind=""
+# Omarchy 4.x wins over /etc/kernel/cmdline: `limine-entry-tool` reads the
+# cmdline from /etc/default/limine's KERNEL_CMDLINE[default] array and
+# then appends /etc/limine-entry-tool.d/*.conf drop-ins. Editing
+# /etc/kernel/cmdline on such a host is a silent no-op. Detect this first
+# and use the drop-in path.
+if [[ -f /etc/default/limine ]] && grep -qE '^\s*KERNEL_CMDLINE\[default\]' /etc/default/limine; then
+    target="/etc/limine-entry-tool.d/vfio.conf"
+    target_kind="limine-entry-tool"
+elif [[ -f /etc/kernel/cmdline ]]; then
+    target="/etc/kernel/cmdline"
+    target_kind="etc-kernel-cmdline"
+elif compgen -G "/boot/loader/entries/*_linux.conf" >/dev/null; then
+    target_kind="systemd-boot"
+    default_entry="$(bootctl --print-config 2>/dev/null | awk '/default:/ {print $2; exit}' || true)"
+    if [[ -n "$default_entry" && -f "/boot/loader/entries/${default_entry}.conf" ]]; then
+        target="/boot/loader/entries/${default_entry}.conf"
+    else
+        target="$(ls /boot/loader/entries/*_linux.conf | head -n1)"
+    fi
+elif [[ -f /etc/default/grub ]]; then
+    target="/etc/default/grub"
+    target_kind="grub"
+elif [[ -f /boot/limine.conf ]] && grep -q '^[[:space:]]*cmdline:' /boot/limine.conf 2>/dev/null; then
+    target="/boot/limine.conf"
+    target_kind="limine-direct"
+else
+    echo "No supported cmdline source found." >&2
+    echo "Looked for /etc/default/limine (Omarchy 4.x), /etc/kernel/cmdline," >&2
+    echo "/boot/loader/entries/*_linux.conf, /etc/default/grub, and" >&2
+    echo "/boot/limine.conf with inline entries." >&2
+    exit 3
+fi
+
+echo "Target file  : $target"
+echo "Target kind  : $target_kind"
+echo "Tokens to add: ${desired[*]}"
+echo
+
+# --- Read current cmdline --------------------------------------------------
+current_cmdline=""
+case "$target_kind" in
+    limine-entry-tool)
+        # Ask the tool directly what cmdline it will bake. Drop the last
+        # line (its own status output) and merge into that.
+        if command -v limine-entry-tool >/dev/null 2>&1; then
+            current_cmdline="$(limine-entry-tool --get-cmdline linux --no-mutex --no-hooks 2>/dev/null | tail -n1)"
+        fi
+        if [[ -z "$current_cmdline" ]]; then
+            current_cmdline="$(cat /etc/kernel/cmdline 2>/dev/null || true)"
+        fi
+        ;;
+    etc-kernel-cmdline)
+        current_cmdline="$(tr -d '\n' < "$target")"
+        ;;
+    systemd-boot)
+        current_line="$(grep -E '^options[[:space:]]+' "$target" | head -n1)"
+        current_cmdline="${current_line#options }"
+        ;;
+    grub)
+        current_line="$(grep -E '^GRUB_CMDLINE_LINUX_DEFAULT=' "$target" | head -n1)"
+        current_cmdline="${current_line#GRUB_CMDLINE_LINUX_DEFAULT=}"
+        current_cmdline="${current_cmdline%\"}"
+        current_cmdline="${current_cmdline#\"}"
+        ;;
+    limine-direct)
+        current_line="$(awk '
+            /^\/[+]?Omarchy/ { in_entry=1; next }
+            in_entry && /^\// { in_entry=0 }
+            in_entry && /^[[:space:]]*cmdline:/ { print; exit }
+        ' "$target")"
+        if [[ -z "$current_line" ]]; then
+            echo "Found $target but no Omarchy entry with an inline cmdline." >&2
+            echo "This looks like an Omarchy 4.x install where entries are" >&2
+            echo "regenerated by limine-update from /etc/kernel/cmdline —" >&2
+            echo "but that file is missing. Create it with the current cmdline:" >&2
+            echo "  echo '$(cat /proc/cmdline)' | sudo tee /etc/kernel/cmdline" >&2
+            exit 3
+        fi
+        current_cmdline="${current_line#*cmdline:}"
+        current_cmdline="${current_cmdline# }"
+        ;;
+esac
+
+# --- Merge -----------------------------------------------------------------
+declare -a tokens
+read -ra tokens <<< "$current_cmdline"
+
+replace_or_append() {
+    local newtok="$1"
+    local key="${newtok%%=*}"
+    local i
+    for i in "${!tokens[@]}"; do
+        local t="${tokens[$i]}"
+        if [[ "$t" == "$key" || "$t" == "${key}="* ]]; then
+            tokens[$i]="$newtok"
+            return
+        fi
+    done
+    tokens+=("$newtok")
+}
+
+for tok in "${desired[@]}"; do
+    replace_or_append "$tok"
+done
+
+new_cmdline="${tokens[*]}"
+
+if [[ "$new_cmdline" == "$current_cmdline" ]]; then
+    echo "No change: cmdline already contains the required tokens."
+    exit 0
+fi
+
+echo "=== Diff ==="
+diff -u <(printf '%s\n' "$current_cmdline") <(printf '%s\n' "$new_cmdline") || true
+echo
+
+if [[ $dry -eq 1 ]]; then
+    echo "(dry run — no files modified)"
+    exit 0
+fi
+
+# --- Write -----------------------------------------------------------------
+# For limine-entry-tool we write a fresh drop-in with just our tokens
+# (bash-array append syntax), and the tool merges it with the base
+# KERNEL_CMDLINE[default] from /etc/default/limine + other drop-ins at
+# UKI-build time. No in-place merge needed and the file may not exist
+# yet — skip the cp -a backup step for that kind.
+if [[ "$target_kind" != "limine-entry-tool" ]] || [[ -f "$target" ]]; then
+    backup="${target}.bak.$(date +%s)"
+    cp -a "$target" "$backup"
+    echo "Backup: $backup"
+fi
+
+case "$target_kind" in
+    limine-entry-tool)
+        mkdir -p "$(dirname "$target")"
+        {
+            echo "# Written by scripts/set-cmdline on $(date -Iseconds)."
+            echo "# Tokens appended to KERNEL_CMDLINE[default] by limine-entry-tool"
+            echo "# when it composes the UKI cmdline. Delete this file to revert."
+            printf 'KERNEL_CMDLINE[default]+=" %s"\n' "${desired[*]}"
+        } > "$target"
+        ;;
+    etc-kernel-cmdline)
+        printf '%s\n' "$new_cmdline" > "$target"
+        ;;
+    systemd-boot)
+        sed -i -E "s|^options[[:space:]]+.*$|options ${new_cmdline}|" "$target"
+        ;;
+    grub)
+        sed -i -E "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*$|GRUB_CMDLINE_LINUX_DEFAULT=\"${new_cmdline}\"|" "$target"
+        echo "GRUB: run 'grub-mkconfig -o /boot/grub/grub.cfg' to regenerate."
+        ;;
+    limine-direct)
+        tmpfile="$(mktemp)"
+        awk -v new_cmdline="$new_cmdline" '
+            BEGIN { in_entry=0 }
+            /^\/[+]?Omarchy/ { in_entry=1; print; next }
+            in_entry && /^\// { in_entry=0 }
+            in_entry && /^[[:space:]]*cmdline:/ {
+                match($0, /^[[:space:]]*/)
+                indent=substr($0, RSTART, RLENGTH)
+                print indent "cmdline: " new_cmdline
+                next
+            }
+            { print }
+        ' "$target" > "$tmpfile"
+        install -m "$(stat -c %a "$target")" -o "$(stat -c %U "$target")" -g "$(stat -c %G "$target")" "$tmpfile" "$target"
+        rm -f "$tmpfile"
+        ;;
+esac
+
+echo "Wrote new cmdline to $target."
+echo
+
+# Regenerate limine.conf entries and the Omarchy UKI whenever we edited
+# something that limine-mkinitcpio-hook is responsible for. Skipping
+# limine-update after a successful edit leaves stale bytes in
+# /boot/EFI/Linux/*.efi and the change won't take effect at next boot.
+if [[ "$target_kind" == "limine-entry-tool" || "$target_kind" == "etc-kernel-cmdline" ]] \
+        && [[ $regen -eq 1 ]] \
+        && command -v limine-update >/dev/null 2>&1; then
+    echo "==> Rebuilding UKI + /boot/limine.conf via limine-update"
+    limine-update
+    echo
+fi
+
+echo "Reboot to apply. Verify with: cat /proc/cmdline"

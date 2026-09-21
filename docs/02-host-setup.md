@@ -28,44 +28,45 @@ omarchy update
 (Or *Update ▸ Omarchy* from the Omarchy menu with `Super + Space`.)
 Reboot if the kernel updated.
 
-## 1. Install the required packages
+## 1. Run the host-prep script
 
-Omarchy already has base-devel, git, and a fair amount of virt tooling.
-Fill in the missing bits, choosing the microcode package that matches
-your CPU:
+[`scripts/prepare-host.sh`](../scripts/prepare-host.sh) idempotently
+installs every package this repo needs (QEMU, libvirt, virt-manager,
+edk2-ovmf, swtpm, dnsmasq, libxml2, the vfio/mkinitcpio drop-ins, and
+the matching CPU microcode), installs `cpu-governor` +
+`/etc/libvirt/hooks/qemu` so the governor swaps automatically around
+guest start/stop, drops a Hyprland Looking Glass config in
+`~/.config/hypr/looking-glass.conf` if a Hyprland config dir exists,
+adds you to the `libvirt` and `kvm` groups, enables `libvirtd.socket`
+and `virtlogd.socket`, and rebuilds the initramfs.
+
+**On Omarchy the installer offers to enable the Nvidia driver during
+setup, and enabling it puts `nvidia`, `/etc/modprobe.d/nvidia.conf` and
+`/etc/mkinitcpio.conf.d/nvidia.conf` on disk. Those race with vfio-pci
+for the dGPU at boot.** `prepare-host.sh` detects this and prints a
+warning. You have two options:
+
+- **Path A (recommended when the dGPU is dedicated to the guest):** let
+  the script uninstall `nvidia-open-dkms` and its drop-ins so vfio-pci
+  is the only claimant. You lose host-side CUDA/OptiX; you gain a
+  deterministic boot and trivial recovery.
+- **Path B:** keep the Nvidia stack on host and write a `libvirt` prepare/
+  release hook that unbinds `nvidia` and binds `vfio-pci` on guest
+  start. Not shipped in this repo; only pick this if you actually use
+  host-side CUDA.
+
+Run the script. Add `--remove-nvidia` if you're taking Path A:
 
 ```bash
-# Common packages (both Intel and AMD hosts)
-sudo pacman -S --needed \
-    qemu-full libvirt virt-manager virt-viewer \
-    edk2-ovmf swtpm dnsmasq iptables-nft bridge-utils \
-    dmidecode \
-    linux-headers
-
-# Then ONE of these, matching your CPU:
-sudo pacman -S --needed intel-ucode      # Intel hosts
-sudo pacman -S --needed amd-ucode        # AMD hosts
+sudo ./scripts/prepare-host.sh --dry-run                    # preview
+sudo ./scripts/prepare-host.sh --remove-nvidia              # Path A
+sudo ./scripts/prepare-host.sh                              # Path B (warns only)
 ```
 
-Not sure which? Run `scripts/detect-host.sh` — it prints the right
-package name for you.
+Log out and back in so the group additions take effect for your shell.
 
-Looking Glass gets installed in [doc 04](04-looking-glass.md) — either
-via `yay -S looking-glass` (yay ships with Omarchy) or built from
-source with our helper.
-
-Enable and start libvirt:
-
-```bash
-sudo systemctl enable --now libvirtd.socket
-sudo usermod -aG libvirt,kvm "$USER"
-newgrp libvirt
-```
-
-Log out / back in so the group change takes effect for your shell.
-
-Optional: raise the libvirtd resource limits so it can happily open
-the many vfio, evdev, and virtiofs handles the CAD guest needs.
+Optional: raise libvirtd's file-descriptor and locked-memory limits so
+it can hold every vfio, evdev, and virtiofs handle the CAD guest needs:
 
 ```bash
 sudo systemctl edit libvirtd
@@ -73,47 +74,88 @@ sudo systemctl edit libvirtd
 sudo systemctl restart libvirtd.socket libvirtd.service
 ```
 
-## 2. Edit the kernel command line (Limine)
+Looking Glass itself gets installed in [doc 04](04-looking-glass.md).
 
-The IOMMU needs to be turned on at boot via a kernel parameter. The
-parameter name depends on your CPU vendor — everything else in this
-step is identical between Intel and AMD.
+## 2. Edit the kernel command line
 
-Locate the main Omarchy boot entry:
+The IOMMU needs to be turned on at boot via a kernel parameter, and
+libvirt wants 1 GiB hugepages reserved for the guest. Both are
+cmdline tokens.
+
+On Omarchy 4.x the source of truth for the kernel command line is
+**`/etc/default/limine`** — specifically the `KERNEL_CMDLINE[default]`
+bash-array variable that `limine-entry-tool` composes at UKI-build
+time. Drop-ins under `/etc/limine-entry-tool.d/*.conf` append extra
+tokens. **`/etc/kernel/cmdline` is completely ignored on such a
+system** even though it looks like it should work — editing it is a
+silent no-op because `limine-entry-tool` never reads it when
+`KERNEL_CMDLINE[default]` is defined. This has burnt many an Omarchy
+user; the helper below deals with it for you.
+
+Easiest: run the helper. It detects the Omarchy `KERNEL_CMDLINE[default]`
+setup, drops our tokens into `/etc/limine-entry-tool.d/vfio.conf` in
+the append syntax the tool expects, then runs `limine-update` to
+rebuild the UKI + `/boot/limine.conf`. On non-Omarchy hosts it falls
+back to `/etc/kernel/cmdline`, systemd-boot entries, or GRUB.
 
 ```bash
-sudoedit /boot/limine.conf
+scripts/set-cmdline --status                  # what's on the running kernel?
+sudo ./scripts/set-cmdline --dry-run          # preview
+sudo ./scripts/set-cmdline                    # apply (24 GiB hugepages)
+sudo ./scripts/set-cmdline --hugepages 32     # apply with a different size
+sudo ./scripts/set-cmdline --no-regen         # skip limine-update
 ```
 
-You'll see one or more entries of the form:
+Rebooting is still up to you.
 
-```
-/Omarchy Linux
-    protocol: linux
-    path: boot():/vmlinuz-linux
-    cmdline: cryptdevice=UUID=... root=/dev/mapper/... rw rootflags=subvol=@ ...
-    module_path: boot():/initramfs-linux.img
+Manual alternative (Omarchy 4.x path), if you want to inspect the
+files yourself:
+
+```bash
+sudoedit /etc/limine-entry-tool.d/vfio.conf
 ```
 
-Append these to the existing `cmdline:` line for the main Omarchy
-entry (single space between existing params and the new ones,
-everything on one line):
+Add a single append line:
 
 **Intel hosts:**
 
-```
-intel_iommu=on iommu=pt default_hugepagesz=1G hugepagesz=1G hugepages=24
+```bash
+KERNEL_CMDLINE[default]+=" intel_iommu=on iommu=pt default_hugepagesz=1G hugepagesz=1G hugepages=24"
 ```
 
 **AMD hosts:**
 
-```
-amd_iommu=on iommu=pt default_hugepagesz=1G hugepagesz=1G hugepages=24
+```bash
+KERNEL_CMDLINE[default]+=" amd_iommu=on iommu=pt default_hugepagesz=1G hugepagesz=1G hugepages=24"
 ```
 
-The only difference is `intel_iommu=on` vs `amd_iommu=on`. On modern
-kernels AMD IOMMU is often enabled implicitly by `iommu=pt`, but being
-explicit is safer.
+The leading space in the string is intentional — `+=` concatenates
+without a separator, and `KERNEL_CMDLINE[default]` already ends in a
+non-space token from `/etc/default/limine`.
+
+Verify the composed cmdline before rebuilding the UKI:
+
+```bash
+sudo limine-entry-tool --get-cmdline linux --no-mutex --no-hooks
+```
+
+That should end in `... hugepages=24`. Then rebuild the UKI +
+`/boot/limine.conf`:
+
+```bash
+sudo limine-update
+```
+
+Watch for the final `Copied: /tmp/limine-mkinitcpio.XXXXX/linux.efi
+-> /boot/EFI/Linux/omarchy_linux.efi` line — that's the UKI actually
+being written. If it prints `WARNING: Possibly missing firmware for
+module: 'xhci_pci_renesas'` and `'qat_6xxx'`, ignore both — Omarchy's
+initramfs config asks for those modules unconditionally and the
+firmware isn't shipped.
+
+On a non-Omarchy host you'd edit `/etc/kernel/cmdline` instead and
+still run `sudo limine-update` — the `set-cmdline` helper does both
+paths automatically.
 
 To have the script print the exact line for you:
 
@@ -192,28 +234,33 @@ After the reboot in step 6, run:
 scripts/check-iommu.sh
 ```
 
-You should see the Nvidia VGA + Audio functions alone in their group, or
-grouped only with their PCIe root port. If the group contains unrelated
-devices (network card, SATA controller), see
+You should see the Nvidia device(s) alone in their group, or grouped
+only with their PCIe root port. A muxless mobile Optimus card lists
+only a single 3D controller (class 0302); a desktop card lists a VGA
+function (0300) plus an HDMI-audio function (0403), sometimes with a
+USB-C function (0c03) alongside —
+[`scripts/list-pci-for-passthrough.sh 10de`](../scripts/list-pci-for-passthrough.sh)
+prints an advisory when only one function is present so you don't add
+a phantom `<hostdev>` later. If the group contains unrelated devices
+(network card, SATA controller), see
 [09 — Troubleshooting](09-troubleshooting.md) *IOMMU group mixing*.
 
 ## 5. Force the Nvidia card off the host driver at boot
 
+[`scripts/prepare-host.sh`](../scripts/prepare-host.sh) already did
+this in step 1 — it installed [`configs/modprobe.d/vfio.conf`](../configs/modprobe.d/vfio.conf)
+and [`configs/mkinitcpio.d/vfio.conf`](../configs/mkinitcpio.d/vfio.conf),
+and ran `mkinitcpio -P`. This section is background reference for what
+those two files do, and what to check if the binding doesn't take.
+
 Two mechanisms working together:
 
-**a) Blacklist the Nvidia driver on the host** — you don't want it, since
-the iGPU is your only display. Skip this if you don't have the proprietary
-Nvidia driver installed on the host anyway, but it's cheap insurance.
-
-Copy [`configs/modprobe.d/vfio.conf`](../configs/modprobe.d/vfio.conf) to
-`/etc/modprobe.d/vfio.conf`. **Substitute the vendor:device pairs your
-card actually reports** — `10de:2504,10de:228e` below is one specific
-RTX 3080 mobile; yours will differ. Run
-`scripts/list-pci-for-passthrough.sh 10de` to print the pairs to paste.
+**a) Blacklist the Nvidia driver on the host.** The vfio.conf drop-in
+contains something like:
 
 ```
 # Bind Nvidia PCI IDs to vfio-pci
-options vfio-pci ids=10de:2504,10de:228e disable_vga=1
+options vfio-pci ids=10de:25bb disable_vga=1
 
 # Keep the open-source and proprietary nvidia drivers off the host
 blacklist nouveau
@@ -221,46 +268,34 @@ blacklist nvidia
 blacklist nvidia_drm
 blacklist nvidia_modeset
 blacklist nvidia_uvm
+
+softdep nouveau pre: vfio-pci
+softdep nvidia  pre: vfio-pci
 ```
 
-**b) Rebuild the initramfs** so vfio-pci is available before udev picks a
-driver.
+List every function your card exposes:
+[`scripts/list-pci-for-passthrough.sh 10de`](../scripts/list-pci-for-passthrough.sh)
+prints them all and warns when only one function exists (muxless
+mobile Optimus). Substitute the real vendor:device pairs and
+re-run `sudo ./scripts/prepare-host.sh` — it detects the change and
+rewrites the drop-in with a `.bak`.
 
-The only change we need is to add the vfio modules to the `MODULES=`
-line of your existing `/etc/mkinitcpio.conf`. **Do not paste over
-`HOOKS=`** — Omarchy installs use `encrypt` / `sd-encrypt`, `lvm2`,
-`plymouth`, `btrfs`, etc. in HOOKS depending on your install choices;
-losing those turns a LUKS box into a boot brick.
+**b) Rebuild the initramfs** so `vfio-pci` is available before udev
+picks a driver. The mkinitcpio.d drop-in uses `MODULES+=(vfio_pci vfio
+vfio_iommu_type1)` so it can't overwrite Omarchy's other `MODULES+=`
+drop-ins (e.g. `nvidia.conf`, `thunderbolt_module.conf`). The
+`softdep` lines and the `blacklist` above then win the load-order race
+inside the initramfs.
 
-Two safe options:
-
-**Option 1 — edit `/etc/mkinitcpio.conf` in place.** Add the three
-vfio modules to the existing `MODULES=(…)` line:
-
-```
-MODULES=(vfio_pci vfio vfio_iommu_type1 <keep whatever was already here>)
-```
+On any host where an Omarchy install previously enabled the Nvidia
+driver, [`configs/mkinitcpio.d/nvidia.conf`](../scripts/prepare-host.sh)
+still sits alongside our `vfio.conf`. `prepare-host.sh --remove-nvidia`
+deletes it (Path A above); without that flag both drop-ins live on
+and the module load order becomes racy.
 
 Confirm your existing `HOOKS=(…)` already includes `modconf` and
 `keyboard` (Omarchy's default does — this is just a sanity check).
 Leave everything else in HOOKS untouched.
-
-**Option 2 — use a mkinitcpio.conf.d drop-in** (mkinitcpio v39+, which
-Arch and current Omarchy ship). Install
-[`configs/mkinitcpio.d/vfio.conf`](../configs/mkinitcpio.d/vfio.conf)
-to `/etc/mkinitcpio.conf.d/vfio.conf`. The drop-in uses `MODULES+=`
-(append), so it can't overwrite what's in the main file.
-
-The vfio modules load before autodetect finds `nvidia`, so the dGPU is
-never claimed by the wrong driver. `kms` is already in Omarchy's
-default HOOKS after `modconf`, so `nvidia_drm` load options from
-`/etc/modprobe.d/vfio.conf` are honoured.
-
-Regenerate:
-
-```bash
-sudo mkinitcpio -P
-```
 
 ## 6. Hugepages
 
@@ -290,37 +325,70 @@ sudo reboot
 ## 8. Verify the binding
 
 ```bash
-lspci -nnk -d 10de:2504
-# ...
-#   Kernel driver in use: vfio-pci
-#   Kernel modules: nouveau, nvidia_drm, nvidia
+scripts/list-pci-for-passthrough.sh 10de     # list Nvidia function(s)
+lspci -nnk -d 10de:*                          # show driver in use
 ```
 
-`Kernel driver in use: vfio-pci` on **both** the VGA and Audio functions
-is the goal.
+`Kernel driver in use: vfio-pci` on **every** Nvidia function listed
+by `list-pci-for-passthrough.sh` is the goal. Desktop cards typically
+list two functions (VGA + audio); muxless mobile Optimus cards list
+one (a 3D controller with no audio silicon on the bus).
 
 If it says `nouveau` or `nvidia`, either the initramfs didn't rebuild, the
 IDs are wrong, or the `blacklist` lines didn't take. See doc 09.
 
-## 9. Optional: CPU governor helper
+## 9. CPU governor (installed automatically by prepare-host.sh)
 
-For CAD/FEA work you want `performance` on VM cores. The helper script:
+For CAD/FEA work you want `performance` on VM cores. `prepare-host.sh`
+installed [`scripts/cpu-governor`](../scripts/cpu-governor) at
+`/usr/local/bin/cpu-governor` and
+[`configs/libvirt/hooks/qemu`](../configs/libvirt/hooks/qemu) at
+`/etc/libvirt/hooks/qemu`, so the governor swaps to `performance`
+when the `windows-cad` domain starts and back to `schedutil` when it
+stops — nothing else to do.
+
+Manual usage if you want to swap without the guest running:
 
 ```bash
-sudo install -m 755 scripts/cpu-governor /usr/local/bin/cpu-governor
-sudo cpu-governor performance
+sudo cpu-governor performance    # for CAD/FEA use
+sudo cpu-governor schedutil      # Arch default
+sudo cpu-governor status         # show current
 ```
 
-To have the governor swap automatically when the CAD guest starts and
-stops, install the libvirt qemu hook shipped in this repo:
+## 10. Firewall (UFW / firewalld)
+
+Omarchy ships with **UFW active by default** (deny incoming, deny
+routed). Libvirt's `virbr0` bridge is treated as an external interface
+by UFW, so DHCP requests and NAT'd outbound traffic from the guest are
+silently dropped. Symptom during doc 03 Windows install: the guest
+settles on an APIPA address `169.254.x.x` instead of `192.168.122.x`,
+and `/var/lib/libvirt/dnsmasq/virbr0.status` stays empty (dnsmasq is
+listening but never sees the DHCP DISCOVER).
+
+**UFW** (Omarchy default):
 
 ```bash
-sudo install -D -m 755 configs/libvirt/hooks/qemu /etc/libvirt/hooks/qemu
-sudo systemctl restart libvirtd.service
+UPLINK=$(ip -4 route show default | awk '/^default/ {print $5; exit}')
+sudo ufw allow in on virbr0
+sudo ufw route allow in on virbr0 out on "$UPLINK"
+sudo ufw reload
+sudo ufw status verbose | grep -E 'virbr0|FWD'
 ```
 
-The hook only fires for the `windows-cad` domain; other guests are
-untouched.
+`$UPLINK` is your host's outbound interface — Wi-Fi (`wlp*`), wired
+ethernet (`enp*`), or a USB-C dock. The `awk` inline picks it up
+automatically from the current default route.
+
+**firewalld** (if you swapped Omarchy's default):
+
+```bash
+sudo firewall-cmd --zone=libvirt --add-interface=virbr0 --permanent
+sudo firewall-cmd --reload
+```
+
+Check which firewall is active first with
+`systemctl is-active ufw firewalld`. If both come back `inactive`, the
+guest will DHCP fine without any of this.
 
 ## Exit criteria
 
@@ -328,6 +396,10 @@ untouched.
 - `grep Huge /proc/meminfo` shows the reserved pages.
 - `virsh -c qemu:///system list` runs without needing sudo.
 - `dmesg | grep -i vfio` shows successful vfio-pci probes with no errors.
+- If UFW or firewalld is active, `virbr0` is whitelisted (see §10) —
+  `sudo ufw status verbose | grep virbr0` (UFW) or
+  `sudo firewall-cmd --get-zone-of-interface=virbr0` (firewalld)
+  returns a matching rule / the `libvirt` zone.
 
 If any of these fail, do not proceed — fix here first.
 

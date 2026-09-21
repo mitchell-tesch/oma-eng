@@ -1,0 +1,14 @@
+[project]
+name = "oma-office-integration"
+version = "0.1.0"
+description = "Excel automation samples driven from Strand7 and Rhino in the VFIO Windows guest."
+requires-python = ">=3.10"
+# xlwings drives Excel via COM, so these scripts only run on Windows.
+# uv still resolves and locks on Linux so this repo works either side
+# of the virtiofs share.
+dependencies = [
+    "xlwings>=0.30",
+]
+
+[tool.uv]
+package = false

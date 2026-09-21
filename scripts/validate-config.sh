@@ -76,7 +76,7 @@ if command -v shellcheck >/dev/null 2>&1; then
             fail "$(realpath --relative-to="$REPO_ROOT" "$sh"):"
             sed 's/^/      /' /tmp/validate-sh.err
         fi
-    done < <(find scripts configs -type f \( -name '*.sh' -o -path 'scripts/cpu-governor' -o -path 'configs/libvirt/hooks/qemu' \) -print0)
+    done < <(find scripts configs -type f \( -name '*.sh' -o -path 'scripts/cpu-governor' -o -path 'scripts/set-guest-memory' -o -path 'scripts/set-cmdline' -o -path 'configs/libvirt/hooks/qemu' \) -print0)
 else
     skip "shellcheck not installed (pacman -S shellcheck)"
 fi
@@ -90,7 +90,7 @@ if command -v bash >/dev/null 2>&1; then
         else
             fail "$(realpath --relative-to="$REPO_ROOT" "$sh"): $(cat /tmp/validate-bash.err)"
         fi
-    done < <(find scripts configs -type f \( -name '*.sh' -o -path 'scripts/cpu-governor' -o -path 'configs/libvirt/hooks/qemu' \) -print0)
+    done < <(find scripts configs -type f \( -name '*.sh' -o -path 'scripts/cpu-governor' -o -path 'scripts/set-guest-memory' -o -path 'scripts/set-cmdline' -o -path 'configs/libvirt/hooks/qemu' \) -print0)
 else
     skip "bash not available"
 fi

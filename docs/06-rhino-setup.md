@@ -40,6 +40,27 @@ If it says `GDI Generic` or `Microsoft Basic Render Driver`, Rhino is
 still on the QXL fallback — see [09 — Troubleshooting](09-troubleshooting.md)
 *Rhino uses Microsoft Basic Render Driver*.
 
+**Muxless-laptop-passthrough note** — on the VFIO+VDD setup from
+[doc 04 §2b](04-looking-glass.md), Rhino's *Secondary graphics
+devices* block lists the Nvidia dGPU with `0 adapter port(s)` and
+`no monitors attached`, and prints an *ATTENTION* warning:
+
+```
+ATTENTION:
+  Desktop is using the slower, less reliable integrated graphics device
+  and probably needs a configuration change.
+```
+
+This is a Rhino heuristic misfire, not a real problem. The check asks
+"which GPU is *driving the monitor*?" and gets VDD (a software
+Indirect Display Driver from doc 04 §2b) rather than a discrete card.
+But the *OpenGL Settings* block above shows the actual OpenGL context
+lives on the Nvidia adapter (`Vendor Name: NVIDIA Corporation`,
+`Shading Language: 4.60 NVIDIA`), so viewport draws, Cycles OptiX, and
+Grasshopper preview all run on the passthrough GPU. Cosmetic warning
+only. To silence it: *Tools ▸ Options ▸ View ▸ Advanced GPU* →
+untick the hardware-detection check (label wording varies by SR).
+
 ## 3. Turn on Cycles GPU rendering (Rhino Render)
 
 Rhino 8's built-in renderer is Cycles. Default is CPU; switch it to GPU:
@@ -106,7 +127,7 @@ Packages* entry (label wording depends on Rhino 8 version).
   anywhere; but debug requires Rhino running in the guest):
 
   ```powershell
-  cd Z:\src\oma-eng\src\rhino-plugin
+  cd Z:\rhino-plugin
   dotnet build -c Debug
   ```
 
@@ -154,7 +175,8 @@ needed.
 
 Because you have Remote-SSH, launching Rhino from VS Code is trivial:
 
-`launch.json` in the plugin project (already in the template):
+`launch.json` in the plugin project (shipped at
+[`src/rhino-plugin/.vscode/launch.json`](../src/rhino-plugin/.vscode/launch.json)):
 
 ```json
 {
@@ -164,21 +186,30 @@ Because you have Remote-SSH, launching Rhino from VS Code is trivial:
       "name": "Attach to Rhino",
       "type": "coreclr",
       "request": "attach",
-      "processId": "${command:pickProcess}"
+      "processName": "Rhino.exe"
     }
   ]
 }
 ```
 
-Use `"type": "coreclr"` for Rhino 8 (net7.0-windows). For legacy Rhino
-6/7 targeting .NET Framework, use `"type": "clr"` instead.
+`processName` auto-picks the single `Rhino.exe`; use
+`"processId": "${command:pickProcess}"` if you run multiple Rhino
+instances. Use `"type": "coreclr"` for Rhino 8 (net7.0-windows); for
+legacy Rhino 6/7 targeting .NET Framework, use `"type": "clr"` instead.
+
+A sibling
+[`extensions.json`](../src/rhino-plugin/.vscode/extensions.json)
+recommends `ms-dotnettools.csharp` + `ms-dotnettools.csdevkit`, so on
+first open of the folder in Remote-SSH, VS Code offers to install
+them into the remote server.
 
 Steps:
 
 1. Start Rhino in the guest and load your plugin
    (`_-LoadPlugIn "path\to\HelloRhino.rhp"`).
 2. In VS Code (connected via Remote-SSH to the guest) press F5 →
-   *Attach to Rhino* → pick `Rhino.exe` from the process list.
+   *Attach to Rhino*. With `processName`, the debugger auto-attaches
+   without a picker.
 3. Set breakpoints in your C# on the Omarchy side; they hit in the guest.
 
 ## 8. Rhino.Compute (optional)

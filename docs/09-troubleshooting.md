@@ -7,20 +7,118 @@ never see it again. Grouped by symptom.
 
 ## Host / VFIO problems
 
+### Hugepagesize stays at 2048 kB after `set-cmdline` + `limine-update` + reboot
+
+Symptom: `grep Hugepagesize /proc/meminfo` says `2048 kB` (2 MiB) even
+after adding `default_hugepagesz=1G hugepagesz=1G hugepages=N` to what
+you thought was the source of truth. Libvirt then refuses to start
+the guest because there aren't enough 1 GiB hugepages.
+
+Cause on Omarchy 4.x: `limine-mkinitcpio-hook` doesn't read
+`/etc/kernel/cmdline`. It calls `limine-entry-tool --get-cmdline linux`,
+which composes the UKI cmdline from `KERNEL_CMDLINE[default]` in
+**`/etc/default/limine`** plus every drop-in under
+`/etc/limine-entry-tool.d/*.conf`. Editing `/etc/kernel/cmdline` on
+this stack is a silent no-op.
+
+Fix — add a drop-in that appends the VFIO tokens:
+
+```bash
+sudo tee /etc/limine-entry-tool.d/vfio.conf > /dev/null <<'EOF'
+KERNEL_CMDLINE[default]+=" intel_iommu=on iommu=pt default_hugepagesz=1G hugepagesz=1G hugepages=24"
+EOF
+
+# Confirm the composed cmdline before rebuilding:
+sudo limine-entry-tool --get-cmdline linux --no-mutex --no-hooks | tail -1
+
+# Rebuild the UKI + /boot/limine.conf:
+sudo limine-update
+
+sudo reboot
+```
+
+The oma-eng `scripts/set-cmdline` helper does all of this
+automatically — it detects the Omarchy setup and writes to the
+drop-in path instead of `/etc/kernel/cmdline`.
+
+Diagnostic snippet if you want to verify each layer:
+
+```bash
+sudo bash -c '
+stat -c "%y  %n" /boot/EFI/Linux/omarchy_linux.efi
+tmp=$(mktemp)
+objcopy --dump-section .cmdline="$tmp" /boot/EFI/Linux/omarchy_linux.efi
+echo "UKI-baked cmdline:"; cat "$tmp"; rm -f "$tmp"
+echo
+echo "Running kernel cmdline:"; cat /proc/cmdline
+'
+```
+
+If the UKI-baked line lacks the tokens but the running kernel line has
+them, you booted an old EFI file — check `efibootmgr -v` for which
+`.efi` firmware is loading. If both lack the tokens, the composed
+cmdline from `limine-entry-tool` is still stale — the fix above hasn't
+propagated yet.
+
 ### `Kernel driver in use: nvidia` (or `nouveau`) after reboot
 
 vfio-pci didn't win the race. Check in order:
 
 1. `cat /proc/cmdline` — is `intel_iommu=on` (Intel) or `amd_iommu=on`
    (AMD) plus `iommu=pt` present? If not, the Limine entry didn't get
-   saved. Re-edit `/boot/limine.conf` (or the systemd-boot / GRUB
-   equivalent — see doc 02 fallbacks).
+   saved. Re-edit `/boot/limine.conf` (or use
+   [`scripts/set-cmdline`](../scripts/set-cmdline) to do it idempotently
+   with a `.bak`).
 2. `lsinitcpio /boot/initramfs-linux.img | grep vfio` — the vfio modules
    should be listed. If not, redo `sudo mkinitcpio -P`.
 3. `journalctl -b | grep -Ei 'vfio|nvidia|nouveau'` — look for who
    claimed the device first.
 4. Make sure `/etc/modprobe.d/vfio.conf` has the IDs and blacklists
    nouveau + nvidia (see doc 02 §5).
+5. Check for a leftover Nvidia driver stack \u2014 next entry.
+
+### Omarchy Nvidia driver stack racing vfio-pci
+
+Omarchy's installer offers to enable the Nvidia driver during setup.
+When taken, it leaves these behind, all of which claim the dGPU before
+vfio-pci does unless removed:
+
+- Package `nvidia-open-dkms` (or `nvidia`, or `nvidia-dkms`)
+- `/etc/modprobe.d/nvidia.conf` \u2014 `options nvidia_drm modeset=1`
+- `/etc/mkinitcpio.conf.d/nvidia.conf` \u2014 `MODULES+=(nvidia nvidia_modeset nvidia_uvm nvidia_drm)`
+
+[`scripts/prepare-host.sh`](../scripts/prepare-host.sh) detects this and
+prints a WARNING when the stack is present. Fix by re-running with
+`--remove-nvidia` (Path A: dedicate the dGPU to the guest, lose
+host-side CUDA):
+
+```bash
+sudo ./scripts/prepare-host.sh --remove-nvidia
+sudo mkinitcpio -P
+sudo reboot
+```
+
+If you want to keep host-side CUDA (Path B), do NOT `--remove-nvidia`.
+Instead write a libvirt `prepare`/`release` hook in
+`/etc/libvirt/hooks/qemu` that unbinds `nvidia` and binds `vfio-pci`
+on guest start and reverses on stop \u2014 not shipped in this repo; the
+pattern is well documented upstream but fragile in practice.
+
+### Only one Nvidia function shows up (muxless mobile Optimus)
+
+Expected on gaming and mobile-workstation laptops. `lspci` lists a
+single 3D controller (class 0302) with no VGA function and no HDMI
+audio function \u2014 the card has no display outputs and no audio silicon
+on the PCI bus; frames are copied to the iGPU via PCIe.
+
+Only bind and pass through the one function. The template ships with
+one active `<hostdev>` block and a second (audio) block commented out
+for the desktop case; leave the second commented on a muxless card.
+[`scripts/list-pci-for-passthrough.sh 10de`](../scripts/list-pci-for-passthrough.sh)
+prints an advisory when it detects a single-function card. Looking
+Glass is unaffected (the muxless design is invisible to LG): audio
+routes through the emulated ich9/HDA in the XML, not through Nvidia
+HDMI.
 
 ### IOMMU group mixing (Nvidia grouped with unrelated devices)
 

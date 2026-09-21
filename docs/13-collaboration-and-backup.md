@@ -73,7 +73,7 @@ Because Actions run inside Revu (not from a shell), there's no
 edit-on-Omarchy debugger story here — but you can keep your Action
 `.rmv` scripts and Batch definition files in
 `~/src/oma-eng/src/bluebeam-actions/` on Omarchy and import them
-into Revu from `Z:\src\oma-eng\src\bluebeam-actions\`.
+into Revu from `Z:\bluebeam-actions\`.
 
 ## Cloud storage
 

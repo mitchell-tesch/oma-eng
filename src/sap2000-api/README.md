@@ -49,7 +49,7 @@ Copy `HelloETABS/` to `HelloSAP2000/` in your own working tree
 to avoid the duplicate), apply the two-line diff above, then:
 
 ```powershell
-cd Z:\src\oma-eng\src\sap2000-api\csharp\HelloSAP2000
+cd Z:\sap2000-api\csharp\HelloSAP2000
 dotnet run -c Release
 ```
 

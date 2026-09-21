@@ -139,7 +139,7 @@ linear-static solver (which will stop cleanly on an empty model — that's
 fine for a smoke test), closes the file, and releases. From the guest:
 
 ```powershell
-py Z:\src\oma-eng\src\strand7-api\python\hello_strand7.py
+py Z:\strand7-api\python\hello_strand7.py
 ```
 
 Standard-library only — `ctypes` ships with Python, no `pip install`
@@ -154,7 +154,7 @@ Straight P/Invoke against the DLL — no interop assembly to generate.
 Build and run:
 
 ```powershell
-cd Z:\src\oma-eng\src\strand7-api\csharp\HelloStrand7
+cd Z:\strand7-api\csharp\HelloStrand7
 dotnet build -c Release
 dotnet run -c Release
 ```

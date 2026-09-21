@@ -18,7 +18,9 @@ for the full workflow.
 - Microsoft Excel installed and activated (365 or Office 2021+
   recommended; see [docs/10-office-integration.md](../../docs/10-office-integration.md) §
   *Installing Office in the VFIO guest*).
-- For the Python sample: `py -m pip install --user xlwings`.
+- For the Python sample: `cd python && uv sync` (reads
+  `pyproject.toml` + `uv.lock`, creates `.venv/`, installs `xlwings`).
+  Run with `uv run strand7_to_excel.py`.
 - For the C# sample: nothing beyond what
   [`src/rhino-plugin/`](../rhino-plugin/) needs — it uses late-bound
   COM so there's no Interop assembly to install.

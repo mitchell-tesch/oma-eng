@@ -34,8 +34,9 @@ so users can lift them straight into their own projects.
     SPACE GASS Windows application folder.
   - CLI: `"C:\Program Files\SPACE GASS 14.5\SpaceGassApi.exe"` (add
     `--port=NNNNN` to change the port).
-- For the Python samples: `py -m pip install --user -r requirements.txt`
-  (installs [`space-gass-api`](https://pypi.org/project/space-gass-api/)).
+- For the Python samples: `cd python && uv sync` (reads
+  `pyproject.toml` + `uv.lock`, creates `.venv/`, installs
+  [`space-gass-api`](https://pypi.org/project/space-gass-api/)).
 - For the C# sample: `dotnet restore` pulls
   [`SpaceGassApi`](https://www.nuget.org/packages/SpaceGassApi) from NuGet.
 
@@ -44,12 +45,12 @@ so users can lift them straight into their own projects.
 ```powershell
 # Start SpaceGassApi.exe first (or leave it running in the background)
 
-cd Z:\src\oma-eng\src\spacegass-api\python
-py -m pip install --user -r requirements.txt
-py hello_spacegass.py
-py hello_spacegass_analysis.py
+cd Z:\spacegass-api\python
+uv sync
+uv run hello_spacegass.py
+uv run hello_spacegass_analysis.py
 
-cd Z:\src\oma-eng\src\spacegass-api\csharp\HelloSpaceGass
+cd Z:\spacegass-api\csharp\HelloSpaceGass
 dotnet run
 ```
 
@@ -68,7 +69,8 @@ need to reach `SpaceGassApi.exe` on port 34560. Two easy paths:
   Find the guest IP on Omarchy with `virsh net-dhcp-leases default`,
   then run the samples on the host:
   ```bash
-  py hello_spacegass.py http://192.168.122.42:34560
+  uv sync
+  uv run hello_spacegass.py http://192.168.122.42:34560
   ```
 - **SSH port forward.** `ssh -L 34560:localhost:34560 windows-cad`
   from Omarchy, then run the samples on the host against

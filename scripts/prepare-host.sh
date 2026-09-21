@@ -5,10 +5,13 @@
 # Does:
 #   1. Installs the QEMU/libvirt/OVMF stack.
 #   2. Installs the vfio + mkinitcpio drop-ins from this repo (with backup).
-#   3. Adds the invoking user to libvirt and kvm groups.
-#   4. Enables libvirtd + virtlogd sockets.
-#   5. Regenerates the initramfs.
-#   6. Prints follow-up steps (kernel cmdline edit, reboot).
+#   3. Installs cpu-governor helper and the libvirt qemu hook.
+#   4. Adds the invoking user to libvirt and kvm groups.
+#   5. Enables libvirtd + virtlogd sockets.
+#   6. Regenerates the initramfs.
+#   7. Warns loudly if an existing host-side Nvidia driver stack would
+#      race with vfio-pci for the dGPU (Omarchy pre-installs one).
+#   8. Prints follow-up steps (kernel cmdline edit, reboot).
 #
 # Rerunning is safe. Existing config files are compared and only rewritten
 # if changed. Group additions are idempotent.
@@ -17,23 +20,32 @@
 #     scripts/prepare-host.sh                     # run through everything
 #     scripts/prepare-host.sh --dry-run           # show what would change
 #     scripts/prepare-host.sh --skip-packages     # skip pacman step
+#     scripts/prepare-host.sh --remove-nvidia     # also `pacman -Rns` the
+#                                                 # host Nvidia driver stack
+#                                                 # and delete its config
+#                                                 # drop-ins (Path A). Only
+#                                                 # do this if the dGPU is
+#                                                 # dedicated to the guest.
 #     scripts/prepare-host.sh --reset-audio-fn    # bounce the Nvidia HDMI
 #         # audio function's PCI reset — useful when the guest fails to
 #         # start with "device is not available for use" on the audio
-#         # function between VM restarts. Requires root.
+#         # function between VM restarts. Requires root. No-op on muxless
+#         # mobile Optimus cards (they have no audio function).
 
 set -euo pipefail
 
 DRY=0
 SKIP_PACKAGES=0
 RESET_AUDIO_FN=0
+REMOVE_NVIDIA=0
 for arg in "$@"; do
     case "$arg" in
         --dry-run)        DRY=1 ;;
         --skip-packages)  SKIP_PACKAGES=1 ;;
         --reset-audio-fn) RESET_AUDIO_FN=1 ;;
+        --remove-nvidia)  REMOVE_NVIDIA=1 ;;
         -h|--help)
-            sed -n '2,24p' "$0"; exit 0 ;;
+            sed -n '2,32p' "$0"; exit 0 ;;
         *) echo "Unknown arg: $arg" >&2; exit 2 ;;
     esac
 done
@@ -112,9 +124,11 @@ esac
 printf '  CPU vendor: %s -> microcode: %s\n' "$vendor_short" "${ucode_pkg:-<unknown>}"
 
 if [[ $SKIP_PACKAGES -eq 0 ]]; then
+    # bridge-utils was dropped from Arch (functionality is in iproute2,
+    # which is a base dependency and always present).
     run "$SUDO pacman -Syu --needed --noconfirm \
         qemu-full libvirt virt-manager virt-viewer \
-        edk2-ovmf swtpm dnsmasq iptables-nft bridge-utils \
+        edk2-ovmf swtpm dnsmasq iptables-nft \
         linux-headers dmidecode ${ucode_pkg}"
 else
     echo "  (skipped)"
@@ -124,6 +138,39 @@ echo "==> Configs"
 install_file "$REPO_ROOT/configs/modprobe.d/vfio.conf"       /etc/modprobe.d/vfio.conf
 install_file "$REPO_ROOT/configs/mkinitcpio.d/vfio.conf"     /etc/mkinitcpio.conf.d/vfio.conf
 install_file "$REPO_ROOT/configs/sysctl.d/99-vm-hugepages.conf" /etc/sysctl.d/99-vm-hugepages.conf
+
+# cpu-governor helper + libvirt qemu hook. The hook is invoked by
+# libvirtd on every guest state change, so it must be executable and
+# owned by root. Also install a Hyprland drop-in for Looking Glass
+# window rules, if a Hyprland config directory exists.
+if [[ -f "$REPO_ROOT/scripts/cpu-governor" ]]; then
+    if [[ ! -x /usr/local/bin/cpu-governor ]] || \
+       ! cmp -s "$REPO_ROOT/scripts/cpu-governor" /usr/local/bin/cpu-governor; then
+        run "$SUDO install -D -m 755 '$REPO_ROOT/scripts/cpu-governor' /usr/local/bin/cpu-governor"
+        printf '  new /usr/local/bin/cpu-governor\n'
+    else
+        printf '  ok  /usr/local/bin/cpu-governor (unchanged)\n'
+    fi
+fi
+if [[ -f "$REPO_ROOT/configs/libvirt/hooks/qemu" ]]; then
+    if [[ ! -x /etc/libvirt/hooks/qemu ]] || \
+       ! cmp -s "$REPO_ROOT/configs/libvirt/hooks/qemu" /etc/libvirt/hooks/qemu; then
+        run "$SUDO install -D -m 755 '$REPO_ROOT/configs/libvirt/hooks/qemu' /etc/libvirt/hooks/qemu"
+        printf '  new /etc/libvirt/hooks/qemu\n'
+    else
+        printf '  ok  /etc/libvirt/hooks/qemu (unchanged)\n'
+    fi
+fi
+if [[ -d "$REPO_ROOT/configs/hypr" && -d "${XDG_CONFIG_HOME:-$HOME/.config}/hypr" ]]; then
+    hypr_target="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/looking-glass.conf"
+    if [[ ! -f "$hypr_target" ]] || ! cmp -s "$REPO_ROOT/configs/hypr/looking-glass.conf" "$hypr_target"; then
+        run "install -D -m 644 '$REPO_ROOT/configs/hypr/looking-glass.conf' '$hypr_target'"
+        printf '  new %s\n' "$hypr_target"
+        printf '        Add `source = ~/.config/hypr/looking-glass.conf` to hyprland.conf\n'
+    else
+        printf '  ok  %s (unchanged)\n' "$hypr_target"
+    fi
+fi
 
 # The mkinitcpio drop-in above uses MODULES+= so it's additive. On
 # mkinitcpio 39+ (current Arch/Omarchy) it's picked up automatically.
@@ -135,6 +182,44 @@ if ! grep -q 'vfio_pci' /etc/mkinitcpio.conf 2>/dev/null && \
     echo "        /etc/mkinitcpio.conf.d/. Ensure the drop-in installed"
     echo "        cleanly, or add MODULES+=(vfio_pci vfio vfio_iommu_type1)"
     echo "        to /etc/mkinitcpio.conf manually."
+fi
+
+# --- Nvidia driver-stack conflict guard -------------------------------------
+# Omarchy's installer offers to enable the Nvidia driver during setup;
+# on any machine where that was taken (or where nvidia-open-dkms was
+# installed for host CUDA), the resulting drop-ins race with the vfio
+# drop-in for the dGPU at boot. Detect and either warn or clean up.
+echo "==> Nvidia driver conflict check"
+nv_pkg=""
+if command -v pacman >/dev/null 2>&1; then
+    nv_pkg="$(pacman -Qq 2>/dev/null | grep -E '^(nvidia|nvidia-open|nvidia-open-dkms|nvidia-dkms|nvidia-lts)$' | paste -sd, - || true)"
+fi
+nv_conflicts=()
+[[ -n "$nv_pkg" ]]                            && nv_conflicts+=("package: $nv_pkg")
+[[ -f /etc/modprobe.d/nvidia.conf ]]          && nv_conflicts+=("/etc/modprobe.d/nvidia.conf")
+[[ -f /etc/mkinitcpio.conf.d/nvidia.conf ]]   && nv_conflicts+=("/etc/mkinitcpio.conf.d/nvidia.conf")
+
+if (( ${#nv_conflicts[@]} == 0 )); then
+    printf '  ok  no host-side Nvidia driver stack detected\n'
+elif [[ $REMOVE_NVIDIA -eq 1 ]]; then
+    echo "  found and REMOVING (Path A) — pass without --remove-nvidia to skip:"
+    for c in "${nv_conflicts[@]}"; do printf '    - %s\n' "$c"; done
+    if [[ -n "$nv_pkg" ]]; then
+        run "$SUDO pacman -Rns --noconfirm ${nv_pkg//,/ }"
+    fi
+    for f in /etc/modprobe.d/nvidia.conf /etc/mkinitcpio.conf.d/nvidia.conf; do
+        [[ -f "$f" ]] && run "$SUDO rm -f '$f'" && printf '    removed %s\n' "$f"
+    done
+else
+    echo "  WARNING: host-side Nvidia driver stack present. It will race with"
+    echo "           vfio-pci for the dGPU at boot; nvidia_drm may claim the"
+    echo "           card before vfio-pci binds. Found:"
+    for c in "${nv_conflicts[@]}"; do printf '    - %s\n' "$c"; done
+    echo "           Path A (recommended for dedicated-guest dGPUs): rerun as"
+    echo "               sudo scripts/prepare-host.sh --remove-nvidia"
+    echo "           Path B: keep the Nvidia stack and add a libvirt prepare/"
+    echo "           release hook that unbinds nvidia and binds vfio-pci on"
+    echo "           guest start (not shipped in this repo)."
 fi
 
 echo "==> Groups"
@@ -164,26 +249,50 @@ else
     echo "  [dry-run] $SUDO mkinitcpio -P"
 fi
 
+# On Omarchy 4.x and other Arch setups that boot a UKI at /boot/EFI/Linux/
+# omarchy_linux.efi, the UKI holds a baked copy of the initramfs AND the
+# kernel command line. `mkinitcpio -P` on its own does NOT rebuild the
+# UKI when invoked outside a pacman transaction — only the pacman hook
+# from `limine-mkinitcpio-hook` does. Call limine-update directly so the
+# UKI picks up the vfio drop-in we just installed. Harmless on systems
+# without a UKI (limine-update is idempotent).
+if command -v limine-update >/dev/null 2>&1 && [[ -d /boot/EFI/Linux ]]; then
+    echo "==> UKI rebuild (limine-update)"
+    if [[ $DRY -eq 0 ]]; then
+        $SUDO limine-update
+    else
+        echo "  [dry-run] $SUDO limine-update"
+    fi
+fi
+
 echo
 echo "Follow-up (not automated, deliberately):"
 echo
 
-# Vendor-specific cmdline suggestion
 case "$vendor_short" in
     intel) iommu_param="intel_iommu=on" ;;
     amd)   iommu_param="amd_iommu=on"   ;;
     *)     iommu_param="# UNKNOWN CPU vendor; edit manually" ;;
 esac
 
-echo "  1. Edit /boot/limine.conf (Omarchy quattro default) and append"
-echo "     to the 'cmdline:' line of the main Omarchy Linux entry:"
+echo "  1. Add the VFIO tokens to the kernel cmdline. The helper handles"
+echo "     Omarchy's /etc/kernel/cmdline + UKI rebuild + limine-update"
+echo "     in one step:"
+echo
+echo "         sudo ./scripts/set-cmdline"
+echo
+echo "     Or manually edit /etc/kernel/cmdline (Omarchy quattro default)"
+echo "     and append:"
 echo
 echo "     $iommu_param iommu=pt default_hugepagesz=1G hugepagesz=1G hugepages=24"
 echo
-echo "     (Older Omarchy on systemd-boot: /boot/loader/entries/*_linux.conf)"
-echo "     For a full report of what your machine needs, run: scripts/detect-host.sh"
+echo "     Then rebuild the UKI + limine.conf: sudo limine-update"
 echo "  2. Reboot."
 echo "  3. Run: scripts/check-iommu.sh nvidia"
-echo "     Confirm the Nvidia VGA + Audio functions are in a clean group."
+echo "     Confirm the Nvidia device(s) are alone in their IOMMU group"
+echo "     (or grouped only with their PCIe root port)."
 echo "  4. Run: lspci -nnk -d 10de:*"
-echo "     Confirm 'Kernel driver in use: vfio-pci' on both functions."
+echo "     Confirm 'Kernel driver in use: vfio-pci' on every Nvidia function"
+echo "     listed by scripts/list-pci-for-passthrough.sh 10de — one function"
+echo "     on muxless mobile Optimus cards, usually two (VGA + audio) on"
+echo "     desktop cards."

@@ -1,0 +1,13 @@
+[project]
+name = "oma-spacegass-api"
+version = "0.1.0"
+description = "Samples for the SPACE GASS 14.5+ REST HTTP API."
+requires-python = ">=3.10"
+# SPACE GASS API is plain HTTP — these samples run on either
+# Omarchy or the guest as long as they can reach SpaceGassApi.exe.
+dependencies = [
+    "space-gass-api>=14.50",
+]
+
+[tool.uv]
+package = false

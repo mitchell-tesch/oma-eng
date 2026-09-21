@@ -81,3 +81,42 @@ if [[ -n "$ids" ]]; then
 else
     echo "    (no matching devices found)"
 fi
+
+# --- Muxless / mobile-Optimus advisory ---------------------------------
+# Desktop Nvidia dGPUs expose a VGA (0300) + Audio (0403) pair, sometimes
+# with an extra USB controller (0c03). Mobile Optimus laptops typically
+# expose only a single 3D controller (0302) — no display outputs, no HDMI
+# audio function, no USB-C controller on the card. Warn the user so they
+# don't blindly add a second <hostdev> block or a second vfio id.
+if [[ "$vendor" == "10de" && -n "$ids" ]]; then
+    id_count=$(awk -F, '{print NF}' <<<"$ids")
+    has_3d=0
+    has_vga=0
+    has_audio=0
+    while read -r line; do
+        case "$line" in
+            *"3D controller"*)              has_3d=1 ;;
+            *"VGA compatible controller"*)  has_vga=1 ;;
+            *"Audio device"*)               has_audio=1 ;;
+        esac
+    done < <(lspci -Dnn | grep -i 'nvidia' || true)
+
+    if (( has_3d && !has_vga && !has_audio )); then
+        cat <<'EOF'
+
+Note: this Nvidia device is a class 0302 (3D controller) with no VGA and
+no audio function. That is a muxless mobile Optimus card (typical on
+gaming and mobile-workstation laptops). Do NOT add a second <hostdev>
+block or a second vfio-pci id for an audio function — there isn't one.
+Guest audio must go through the emulated ich9/HDA device (already in
+configs/libvirt/windows-cad.xml). Looking Glass will still work: the
+guest Nvidia driver renders to the IVSHMEM shared buffer and the host
+client copies from there — the muxless design is invisible to LG.
+EOF
+    elif (( has_vga && !has_audio )); then
+        echo
+        echo "Note: VGA function found but no HDMI-audio function detected on"
+        echo "the Nvidia card. Verify with 'lspci -nn | grep -i nvidia' — some"
+        echo "workstation cards omit audio."
+    fi
+fi

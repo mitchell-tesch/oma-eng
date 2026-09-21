@@ -63,6 +63,54 @@ device just wastes an interrupt line. In Device Manager, disable
 *Microsoft Basic Display Adapter* — do **not** uninstall, as the guest
 still boots on it before the Nvidia driver loads.
 
+**Skip on modern virtio-win** — with `virtio-win-guest-tools` installed
+(doc 03 §6), the QXL driver `qxldod` claims the SPICE display, so
+Device Manager lists *Red Hat QXL controller* rather than
+*Microsoft Basic Display Adapter*. Disabling `qxldod` there also
+blacks out SPICE, which you want to keep as a recovery view if
+Looking Glass or the virtiofs share ever break. On this repo's
+setup (three display adapters: QXL + NVIDIA + VDD), the interrupt
+cost of the idle QXL device is negligible on any 10+ vCPU guest;
+leave it enabled.
+
+### Recommended: make VDD the only *active* display
+
+With three adapters (QXL, NVIDIA, VDD) Windows treats the guest as a
+multi-monitor system, and apps regularly open on the QXL / "invisible"
+monitor because they saved a window position there. The clean fix is
+to keep QXL's driver loaded (so SPICE stays available as recovery) but
+turn QXL *off at the OS level* via display arrangement:
+
+- Settings → System → Display → scroll to *Multiple displays*.
+- Click *Identify* to see which display number is VDD.
+- Change the dropdown from *Extend these displays* to **Show only on
+  <VDD number>**.
+
+Windows immediately drops the QXL display target. LG keeps working
+(it captures VDD), apps can only open on VDD. Reversible in the same
+dropdown if you ever need SPICE recovery.
+
+If you're confident you'll never need SPICE (LG + SSH cover you),
+remove the `<graphics type='spice'>` and `<video model='qxl'>` blocks
+from the domain XML entirely. Requires a shutdown/redefine; cleanest
+but irreversible without another XML edit.
+
+### Rescuing a stuck off-screen window
+
+Before you flip to *Show only on VDD*, or in a pinch after undocking
+a monitor, an app may open on an invisible display. Rescue without
+the Windows key:
+
+1. **Alt + Tab** to focus the stuck window.
+2. **Alt + Space** → opens the window's system menu.
+3. **M** → selects *Move*.
+4. Press **any arrow key** — the title bar reattaches to the mouse
+   cursor.
+5. Move the mouse into the visible display area.
+6. **Click** to drop it there.
+
+Works on every Windows version since 3.1.
+
 ## 5. Timer / scheduling for consistent frame times
 
 - Ensure the QEMU XML uses `hpet present='no'` and
@@ -148,11 +196,33 @@ In an admin PowerShell with `winget`:
 winget install --silent Microsoft.DotNet.SDK.8
 winget install --silent Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.ManagedDesktopBuildTools --add Microsoft.VisualStudio.Component.Windows10SDK"
 winget install --silent Python.Python.3.12
+winget install --silent astral-sh.uv
 winget install --silent Git.Git
 ```
 
 The .NET 8 SDK covers Rhino 8 plugin development (Rhino 8 targets
 `net7.0-windows` for RhinoCommon; net8 SDK builds it fine).
+
+**Python packaging** — `uv` is the fast Rust-based replacement for
+`pip` + `virtualenv` + `pip-tools`. Every Python sub-project in
+`src/` ships a `pyproject.toml` + `uv.lock`; `uv sync` inside the
+project directory creates a `.venv/` and installs the exact locked
+versions. Cross-platform lockfiles let you `uv sync` on either
+Omarchy or the guest and get the same versions.
+
+**Running these over SSH** — install packages one at a time, not
+chained. Some installers (notably `Microsoft.DotNet.SDK.8`) briefly
+cycle the network stack while registering services and can reset an
+active SSH session, aborting the rest of your loop. Either run each
+`winget install` in its own SSH call, or on the guest console
+directly.
+
+**VS Build Tools is optional up-front** — the .NET 8 SDK alone builds
+all the sample plugins in `src/`. Add BuildTools only when you need
+MSVC / unmanaged C++ / vcpkg support, which none of Rhino, Strand7,
+ETABS, or SpaceGass's C# / Python APIs require. The `.override`
+argument brings in the Windows 10 SDK and Managed Desktop workload;
+expect a ~4 GB download and 15–20 minutes of install time.
 
 ## 9. Snapshot
 
