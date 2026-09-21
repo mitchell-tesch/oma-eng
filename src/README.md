@@ -21,6 +21,7 @@ instantly. Build and run in the guest.
 | `spacegass-api/python/hello_spacegass.py` | SPACE GASS 14.5+ REST — opens sample, lists nodes, closes | Python 3 + `space-gass-api` (async) | `py hello_spacegass.py` |
 | `spacegass-api/python/hello_spacegass_analysis.py` | SPACE GASS 14.5+ REST — opens sample, runs LSA, reads reactions | Python 3 + `space-gass-api` (async) | `py hello_spacegass_analysis.py` |
 | `spacegass-api/csharp/HelloSpaceGass/` | C# equivalent of the Python quick-start | C# / .NET 8 + `SpaceGassApi` NuGet | `dotnet run` |
+| `native-tooling/` | **Omarchy-native** — `ifcopenshell` IFC scripts + `handcalcs` calc notebooks. No guest, no VFIO. See [doc 14](../docs/14-native-omarchy-tooling.md). | Python 3 + uv | `uv sync` then `uv run` |
 
 ## Running from the guest
 
@@ -75,6 +76,16 @@ uv run hello_spacegass_analysis.py
 # SPACE GASS 14.5+ REST API — C# equivalent
 cd Z:\spacegass-api\csharp\HelloSpaceGass
 dotnet run
+```
+
+## Running from Omarchy (native, no guest)
+
+```bash
+# IFC scripts + calc notebooks — pure Linux, iGPU only
+cd ~/dev/oma-eng/src/native-tooling
+uv sync
+uv run python samples/dump_ifc_columns.py samples/smoke.ifc /tmp/cols.csv
+uv run jupyter lab                # open samples/beam_capacity.ipynb
 ```
 
 ## Why the samples are minimal

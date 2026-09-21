@@ -553,6 +553,128 @@ lives in `scripts/prepare-host.sh` under `--reset-audio-fn`.
 
 ---
 
+## Native Omarchy tooling (Bonsai / Jupyter / handcalcs)
+
+Covers [doc 14](14-native-omarchy-tooling.md). No guest involvement —
+these all run on Omarchy directly.
+
+### `pip install --user ifcopenshell` → *externally-managed-environment*
+
+Modern Python enforces PEP 668. Don't `pip install --user` on system
+Python; use `uv` instead.
+
+```bash
+# Project-local (recommended):
+cd ~/dev/oma-eng/src/native-tooling
+uv sync
+
+# Ad-hoc one-shot:
+uv run --with ifcopenshell python -c "import ifcopenshell; print(ifcopenshell.version)"
+
+# Global user tool (only for scripts with CLI entry points):
+uv tool install ifcopenshell
+```
+
+### `pacman -S texlive-most` → *target not found*
+
+Arch retired the `texlive-most` group. Install the specific packages
+instead:
+
+```bash
+sudo pacman -S --needed texlive-basic texlive-latexextra \
+    texlive-latexrecommended texlive-fontsextra \
+    texlive-fontsrecommended texlive-xetex texlive-binextra \
+    texlive-plaingeneric texlive-mathscience
+```
+
+`nbconvert --to pdf` also needs `pandoc-cli`:
+
+```bash
+sudo pacman -S --needed pandoc-cli
+```
+
+Remove any of the above and you get one of these mid-conversion:
+
+| Missing | Error |
+|---|---|
+| `pandoc-cli` | `nbconvert.utils.pandoc.PandocMissing: Pandoc wasn't found` |
+| `texlive-xetex` | `xelatex: command not found` |
+| `texlive-plaingeneric` | `l.83  \usepackage {soul}` → *File `soul.sty' not found* |
+| `texlive-mathscience` | *File `bm.sty' not found* |
+| `texlive-latexextra` | *File `adjustbox.sty' not found* |
+
+### `blender --command extension install bonsai` → *incompatible (Python 3.14 vs 3.13)*
+
+As of this doc, the Bonsai release on extensions.blender.org is
+`v0.8.5-post1`, `blender_version_max=5.1.0`, built for Python 3.13.
+Blender 5.2 (Omarchy pacman) uses Python 3.14 and refuses to load
+the extension. Two workarounds:
+
+1. **Blender 4.5 LTS portable** (recommended — side-by-side with
+   the pacman Blender 5.2, no root):
+
+   ```bash
+   mkdir -p ~/tools && cd ~/tools
+   curl -fsSLO https://download.blender.org/release/Blender4.5/blender-4.5.4-linux-x64.tar.xz
+   tar xf blender-4.5.4-linux-x64.tar.xz
+   cat > ~/.local/bin/blender-bim <<'SH'
+   #!/usr/bin/env bash
+   exec "$HOME/tools/blender-4.5.4-linux-x64/blender" --online-mode "$@"
+   SH
+   chmod +x ~/.local/bin/blender-bim
+   blender-bim --command extension install --enable bonsai
+   ```
+
+2. **AUR `ifcopenshell` (0.9.0-alpha)** builds against system Python
+   3.14 and bundles a Bonsai `.zip` for the current Blender. Heavy
+   source build (boost, cgal, opencascade).
+
+Switch back to system Blender 5.2 once upstream Bonsai ships a
+compatible release (typically 2–4 weeks after a new Blender LTS).
+
+### `forallpeople` prints `SyntaxWarning: invalid escape sequence`
+
+Cosmetic warning from `forallpeople/environment.py` on Python 3.12+
+(unescaped `\*` in a plain string that should be raw). Doesn't break
+anything, will disappear on the next upstream release. Silence with:
+
+```bash
+uv run python -W "ignore::SyntaxWarning" -c "import forallpeople"
+```
+
+Or suppress inside your notebook cell:
+
+```python
+import warnings
+warnings.filterwarnings("ignore", category=SyntaxWarning, module="forallpeople.*")
+import forallpeople as si
+si.environment("structural", top_level=True)
+```
+
+### Blender / Cycles refuses to see the dGPU
+
+Expected while the guest is running — the RTX A500 is bound to
+`vfio-pci`, and neither `nvidia.ko` nor Cycles-OptiX can touch it.
+Blender falls back to CPU or Intel Arc oneAPI, which is fine for
+Bonsai viewport work. If you actually need the dGPU on Omarchy,
+shut the guest down and unbind `vfio-pci` (see doc 03 §"Handing the
+GPU back to Linux").
+
+### `jupyter lab` opens but kernel is *starting…* forever
+
+If uv installed JupyterLab into `.venv/` but VS Code or the browser
+started a different kernel, you'll see this. Force the project
+kernel:
+
+```bash
+cd ~/dev/oma-eng/src/native-tooling
+uv run python -m ipykernel install --user --name oma-native \
+    --display-name "oma-native (uv .venv)"
+# Then pick "oma-native" in the JupyterLab kernel dropdown.
+```
+
+---
+
 ## When all else fails
 
 - `journalctl -b | tail -300`

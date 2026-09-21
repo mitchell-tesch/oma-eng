@@ -13,12 +13,41 @@ Prefer these for any task that doesn't strictly need Revit's
 parametric authoring model, Rhino's viewport, or a commercial FEA
 solver. The VM stays off, host RAM and battery stay untouched, and
 the source stays in your normal editor next to the C# / Python
-plugin code from doc 08.
+plugin code from [doc 08](08-api-development.md).
 
 This doc is orthogonal to the guest-setup chain (docs 01–13) — read
 it any time.
 
-## BIM: BlenderBIM / Bonsai
+Companion project: [`src/native-tooling/`](../src/native-tooling/README.md).
+It ships an `uv`-managed venv with every dependency below already
+pinned, plus a smoke-test IFC and a handcalcs notebook you can
+execute in one command.
+
+## GPU on the host — what you have
+
+While the guest is running, the Nvidia RTX A500 is bound to
+`vfio-pci` and invisible to Omarchy. The host desktop and every
+process on it — Blender included — runs on the **Intel Arc iGPU**
+(`i915` driver, Meteor Lake). That's plenty for:
+
+- Bonsai / Blender viewport for IFC model inspection and light
+  edits.
+- IFC scripting via `ifcopenshell` (CPU-only anyway).
+- Cycles renders using **CPU** or **oneAPI** (Intel Arc) backend.
+- JupyterLab in the browser, matplotlib plots, numpy/scipy work.
+
+If you need the dGPU on the host (Cycles OptiX, ML training), shut
+the guest down first and unbind `vfio-pci` — the doc 03 §"Handing
+the GPU back to Linux" section covers it.
+
+```bash
+# Verify iGPU is what Blender sees:
+lspci -nnk | grep -A2 -iE "VGA|3D"
+# Kernel driver in use: i915                     ← iGPU, live
+# Kernel driver in use: vfio-pci                 ← dGPU, held for guest
+```
+
+## BIM: Bonsai (Blender add-on)
 
 **Bonsai** (formerly *BlenderBIM Add-on*, renamed mid-2024) is a
 Blender add-on for reading, writing, and editing IFC natively.
@@ -32,42 +61,95 @@ What it does:
   spatial tree, add or remove elements, export back to IFC.
 - Extract quantity takeoffs and property tables to CSV / JSON.
 - Round-trip IFC with Revit, ArchiCAD, Tekla, and Vectorworks.
-- Runs on the iGPU by default. If you want the Nvidia dGPU
-  for a render session, either unbind vfio-pci temporarily
-  (see doc 03) or use CPU rendering (Cycles is fine on modern
-  Ryzen / Intel).
 
-### Install
+### Install Blender — which version?
+
+Blender ships two flavours on Omarchy:
+
+| Purpose | Where | Blender | Python |
+|---|---|---|---|
+| General 3D / Cycles rendering / anything **not** Bonsai | `sudo pacman -S blender` | 5.2 LTS | 3.14 |
+| **Bonsai / IFC authoring** | Blender 4.5 LTS portable from blender.org | 4.5.4 LTS | 3.11 |
+
+**Why two.** As of this doc, the Bonsai release on
+extensions.blender.org is `v0.8.5-post1`, declared
+`blender_version_max=5.1.0`, built against Python 3.13. Blender 5.2
+ships with Python 3.14 and refuses to load the extension
+(`Extension bl_ext.blender_org.bonsai is incompatible`). Upstream
+Bonsai typically catches up 2–4 weeks after a new Blender LTS —
+switch back to the system Blender once a compatible release lands.
 
 ```bash
-# From the AUR (packaged for Arch/Omarchy):
-yay -S blender-bonsai
-
-# Alternatively, install Blender from the official repos and add
-# the Bonsai add-on manually:
+# General-purpose Blender (repo):
 sudo pacman -S --needed blender
-# Then in Blender: Edit ▸ Preferences ▸ Add-ons ▸ Install ▸
-# point at the bonsai .zip downloaded from bonsaibim.org
+
+# Bonsai-compatible Blender (portable to ~/tools/, no root):
+mkdir -p ~/tools && cd ~/tools
+curl -fsSLO https://download.blender.org/release/Blender4.5/blender-4.5.4-linux-x64.tar.xz
+tar xf blender-4.5.4-linux-x64.tar.xz
+
+# Launcher shim so the LTS+Bonsai combo is on PATH as `blender-bim`:
+cat > ~/.local/bin/blender-bim <<'SH'
+#!/usr/bin/env bash
+exec "$HOME/tools/blender-4.5.4-linux-x64/blender" --online-mode "$@"
+SH
+chmod +x ~/.local/bin/blender-bim
+blender-bim --version   # Blender 4.5.4 LTS
 ```
 
-Bonsai also ships as a Flatpak bundle if you'd rather sandbox it —
-see the *Install* page on bonsaibim.org.
+### Install the Bonsai add-on
+
+Upstream ships Bonsai through the official Blender extensions
+repo. Blender exposes a CLI installer so you can enable it
+without the GUI:
+
+```bash
+blender-bim --command extension sync
+blender-bim --command extension install --enable bonsai
+```
+
+GUI equivalent, if you prefer clicking:
+
+1. `blender-bim &`
+2. *Edit ▸ Preferences ▸ Get Extensions*
+3. Search **Bonsai** → *Install*
+4. *Edit ▸ Preferences ▸ Add-ons* → tick **Bonsai** to enable
+5. Bonsai adds a **BIM** workspace tab across the top of Blender
+
+> The AUR alternative `yay -S ifcopenshell` (0.9.0-alpha) builds
+> from source against system Python 3.14 and bundles Bonsai. Heavy
+> source build (boost, cgal, opencascade). Only bother if the
+> upstream Blender extension is dragging its feet and you also
+> want the C++ `ifcopenshell` CLI system-wide. Do **not** `yay -S
+> bonsai` — the top hit is an unrelated web browser.
 
 ### Verify
 
+Interactive:
+
 ```bash
-blender &
+cd ~/dev/oma-eng/src/native-tooling
+uv sync                     # first time only
+blender-bim samples/smoke.ifc
 # In Blender:
-#   Edit ▸ Preferences ▸ Add-ons ▸ enable "Bonsai" (Bonsai will
-#   register a new "BIM" workspace and add tabs to the Properties
-#   panel)
-#   File ▸ New ▸ IFC Project — creates a fresh IFC document
-#   File ▸ Open — pick any .ifc file (drag-and-drop also works)
+#   Switch to the BIM workspace tab (added by Bonsai)
+#   The IFC spatial tree (Project → Site → Building → Storey)
+#   shows Ground with two IfcColumn objects.
 ```
 
-The BIM workspace shows the same IFC spatial tree Revit does
-(Project → Site → Building → Storey → Elements) and a property
-inspector for the selected element.
+Headless smoke test (proves the addon loads and Bonsai's
+`load_project` operator works, without opening a window):
+
+```bash
+blender-bim --background --python-expr "
+import bpy, ifcopenshell
+bpy.ops.bim.load_project(filepath='/home/mzt/dev/oma-eng/src/native-tooling/samples/smoke.ifc')
+m = ifcopenshell.open(bpy.context.scene.BIMProperties.ifc_file)
+print('Columns in loaded model:', len(m.by_type('IfcColumn')))
+"
+# Import finished in 0.13 seconds
+# Columns in loaded model: 2
+```
 
 ## IFC scripting: IfcOpenShell
 
@@ -76,45 +158,67 @@ reading and writing IFC. Use it directly for automation without the
 Blender GUI. Faster for batch work, and lets you keep IFC
 processing inside your normal `~/dev/oma-eng/` Python scripts.
 
-### Install
+### Install (uv, project-local)
+
+The `src/native-tooling/` project already lists `ifcopenshell` in
+its `pyproject.toml`:
 
 ```bash
-python -m pip install --user ifcopenshell
+cd ~/dev/oma-eng/src/native-tooling
+uv sync                                     # once
+uv run python -c "import ifcopenshell; print(ifcopenshell.version)"
+# 0.8.5 (or newer)
+```
+
+### One-off use outside a project
+
+Modern Python is PEP 668 "externally managed" — plain
+`pip install --user` will refuse. Two clean options:
+
+```bash
+# 1. ephemeral uv environment (no venv activation, no state):
+uv run --with ifcopenshell python -c "import ifcopenshell; print(ifcopenshell.version)"
+
+# 2. install as a user tool (only for scripts with entry points):
+uv tool install ifcopenshell
 ```
 
 ### Example — extract every structural column to CSV
 
+`src/native-tooling/samples/dump_ifc_columns.py` is a ready-to-run
+example. The essential shape:
+
 ```python
 """dump_ifc_columns.py — list every column in an IFC file with its
 GlobalId, name, section profile, and containing storey."""
-import csv
-import sys
-
+import csv, sys
 import ifcopenshell
 import ifcopenshell.util.element
 
 model = ifcopenshell.open(sys.argv[1])
-
-with open("columns.csv", "w", newline="", encoding="utf-8") as f:
+with open(sys.argv[2], "w", newline="", encoding="utf-8") as f:
     w = csv.writer(f)
     w.writerow(["GlobalId", "Name", "Profile", "Storey"])
     for col in model.by_type("IfcColumn"):
-        storey = ifcopenshell.util.element.get_container(col)
+        storey   = ifcopenshell.util.element.get_container(col)
         col_type = ifcopenshell.util.element.get_type(col)
         w.writerow([
             col.GlobalId,
             col.Name or "",
             col_type.Name if col_type else "",
-            storey.Name if storey else "",
+            storey.Name  if storey   else "",
         ])
-
-print(f"Wrote columns.csv for {len(model.by_type('IfcColumn'))} columns.")
 ```
 
 Run:
 
 ```bash
-python dump_ifc_columns.py ~/oma-eng-inbox/project.ifc
+cd ~/dev/oma-eng/src/native-tooling
+uv run python samples/dump_ifc_columns.py samples/smoke.ifc /tmp/cols.csv
+cat /tmp/cols.csv
+# GlobalId,Name,Profile,Storey
+# 2ur20wQHTDFwhm8X5JpvtO,C-01,,Ground
+# 1dExm_cjf2lwj7tchr2XRH,C-02,,Ground
 ```
 
 Typical wall-clock: seconds for a several-thousand-element model.
@@ -126,10 +230,11 @@ Revit would take minutes to open the same file just to browse.
   the model, extract quantities, script bulk modifications, produce
   a filtered IFC for handoff to a fabricator. All fast, all
   scriptable, no VM.
-- **Revit in the guest (doc 12)** — authoring detailed families,
-  working inside a live Autodesk Docs project, running
-  Autodesk-specific analyses, publishing project deliverables.
-  Anything that needs the Revit parametric family model.
+- **Revit in the guest ([doc 12](12-revit-and-rhino-inside.md))** —
+  authoring detailed families, working inside a live Autodesk Docs
+  project, running Autodesk-specific analyses, publishing project
+  deliverables. Anything that needs the Revit parametric family
+  model.
 
 Most structural offices end up with **both**: Revit as the
 authoring source-of-truth for internal projects, Bonsai as the
@@ -141,7 +246,7 @@ for QTO and IFC hygiene.
 Best open-source Mathcad alternative for structural hand-calcs.
 Renders Python calculations as LaTeX equations with substituted
 values — the exact Mathcad output shape, but the source is plain
-`.ipynb` (JSON) or `.py` files, so it lives in Git and diffs
+`.ipynb` (JSON) or paired `.py` files, so it lives in Git and diffs
 line-by-line.
 
 - **JupyterLab** — the notebook UI
@@ -149,33 +254,48 @@ line-by-line.
   (<https://github.com/connorferster/handcalcs>)
 - **forallpeople** — unit-aware quantities (mm, MPa, kN, kN·m)
   that render inside the LaTeX output
+- **jupytext** — pair `.ipynb` with a `.py` (percent format) so Git
+  diffs stay readable
 
 ### Install
 
-Primary (uv — fast resolve, no venv activation dance; install with
-`sudo pacman -S uv`):
+Primary (uv, project-local — already pinned in
+`src/native-tooling/pyproject.toml`):
 
 ```bash
-uv pip install --user jupyterlab handcalcs forallpeople
+cd ~/dev/oma-eng/src/native-tooling
+uv sync                     # jupyterlab, handcalcs, forallpeople, jupytext
+uv run jupyter lab          # browser opens JupyterLab
 ```
 
-Fallback (system pip):
+Or as a global user tool (no project needed):
 
 ```bash
-python -m pip install --user jupyterlab handcalcs forallpeople
+sudo pacman -S --needed jupyterlab
+uv tool install --with handcalcs --with forallpeople jupyter
+jupyter lab
 ```
+
+### VS Code alternative
+
+The Jupyter extension (`ms-toolsai.jupyter`) opens `.ipynb` files
+inside VS Code with the same kernel picker, cell-by-cell execution,
+and rich output rendering. `src/native-tooling/.vscode/extensions.json`
+already recommends it. Point VS Code at the `.venv/` uv created and
+Ctrl+Enter runs the current cell.
 
 ### Example — plastic-moment capacity of a beam
 
-Create a fresh notebook with `jupyter lab`, then in a cell:
+Full source in [`src/native-tooling/samples/beam_capacity.py`](../src/native-tooling/samples/beam_capacity.py)
+(jupytext percent format) with an executed
+[`beam_capacity.ipynb`](../src/native-tooling/samples/beam_capacity.ipynb)
+snapshot alongside. The essential cells:
 
 ```python
 %load_ext handcalcs.render
 import forallpeople as si
 si.environment("structural", top_level=True)
 ```
-
-Then in the next cell (with a `%%render` magic at the top):
 
 ```python
 %%render
@@ -204,17 +324,47 @@ Both the symbolic form and the numeric substitution are shown, and
 the result carries units — same shape a hand-written calc would
 have on a checked-and-signed pad.
 
+Execute end-to-end from the shell to prove the stack works:
+
+```bash
+cd ~/dev/oma-eng/src/native-tooling
+uv run jupyter nbconvert --to notebook --execute --inplace \
+    samples/beam_capacity.ipynb
+# → M_p = 532.500 kN·m, phi_M_p ≈ 484.091 kN·m
+```
+
 ### Sharing calcs with reviewers
 
 - **HTML export** (`File ▸ Save and Export Notebook As ▸ HTML`) —
   read-only, no dependencies for the reviewer. Round-trips through
   email attachments cleanly.
-- **PDF via LaTeX** for a signed calc package
-  (`jupyter nbconvert --to pdf beam_calcs.ipynb`; needs a working
-  `xelatex` — `sudo pacman -S texlive-most`).
-- **Git commit** the `.ipynb` alongside the rest of your source.
-  Diffs are per-cell. Add `jupytext` as a paired-format converter if
-  you'd rather commit `.py` and generate the notebook on demand.
+- **PDF via XeLaTeX + pandoc** for a signed calc package:
+
+  ```bash
+  sudo pacman -S --needed pandoc-cli \
+      texlive-basic texlive-latexextra texlive-latexrecommended \
+      texlive-fontsextra texlive-fontsrecommended texlive-xetex \
+      texlive-binextra texlive-plaingeneric texlive-mathscience
+  uv run jupyter nbconvert --to pdf samples/beam_capacity.ipynb
+  ```
+
+  On modern Arch/Omarchy the `texlive-most` group no longer exists
+  — install the specific `texlive-*` packages above. `nbconvert`
+  pipes through `pandoc` and then `xelatex`; missing either one
+  produces cryptic *"Pandoc wasn't found"* or *"File `soul.sty'
+  not found"* errors. `texlive-plaingeneric` supplies `soul.sty`
+  and `texlive-mathscience` supplies `bm.sty`, both of which the
+  default nbconvert template pulls in.
+- **Git commit** the `.py` (jupytext percent format) as the
+  source-of-truth, optionally also commit the executed `.ipynb`.
+  jupytext round-trips both:
+
+  ```bash
+  # from .py to executable notebook
+  uv run jupytext --to ipynb samples/beam_capacity.py
+  # from executed notebook back to reviewable .py
+  uv run jupytext --to py:percent samples/beam_capacity.ipynb
+  ```
 
 ### When to use Jupyter vs Excel
 
@@ -224,20 +374,22 @@ have on a checked-and-signed pad.
 - **Excel** — data tables, dashboards, load matrices, connection
   schedules, anything with dense tabular presentation.
 
-The Rhino ↔ Excel and Strand7 ↔ Excel samples (doc 10) still need
-Excel in the guest. But the calc-package half of a typical
-structural report can live entirely on Omarchy.
+The Rhino ↔ Excel and Strand7 ↔ Excel samples ([doc 10](10-office-integration.md))
+still need Excel in the guest. But the calc-package half of a
+typical structural report can live entirely on Omarchy.
 
 ## Numeric tooling — Octave, NumPy, SciPy, SymPy
 
-For MATLAB-style numeric or symbolic work, no VM needed:
+For MATLAB-style numeric or symbolic work, no VM needed. NumPy /
+SciPy / SymPy / matplotlib are all in `src/native-tooling/`'s
+`pyproject.toml` already.
 
 | Tool | Install | Use case |
 |---|---|---|
 | **GNU Octave** | `sudo pacman -S octave` | Runs most MATLAB scripts. Fine for one-off numeric work. |
-| **NumPy / SciPy** | `pip install numpy scipy` | Faster than Octave for anything vectorised; the standard Python numeric stack. |
-| **SymPy** | `pip install sympy` | Symbolic maths — closed-form derivations that complement Handcalcs. |
-| **matplotlib** | `pip install matplotlib` | Publication-quality plotting, pairs with Jupyter. |
+| **NumPy / SciPy** | `uv sync` (already listed) | Faster than Octave for anything vectorised; the standard Python numeric stack. |
+| **SymPy** | `uv sync` (already listed) | Symbolic maths — closed-form derivations that complement Handcalcs. |
+| **matplotlib** | `uv sync` (already listed) | Publication-quality plotting, pairs with Jupyter. |
 
 ## Non-goals for this doc
 
@@ -249,17 +401,30 @@ For MATLAB-style numeric or symbolic work, no VM needed:
   excellent, but none of them are drop-in replacements for a
   code-compliant structural check. Structural engineers still need
   a commercial solver for signed deliverables. See the vendor docs
-  in the guest chain (docs 07 / 11).
+  in the guest chain ([07](07-strand7-setup.md) / [11](11-etabs-and-spacegass.md)).
 
 ## Exit criteria
 
-- Bonsai add-on loads in Blender on Omarchy; opening a sample IFC
-  shows a 3D model with a populated spatial tree in the BIM
-  workspace.
-- `python -c "import ifcopenshell; print(ifcopenshell.version)"`
-  prints a version.
-- `jupyter lab` launches, `%load_ext handcalcs.render` succeeds,
-  and a `%%render` cell substituting values into a formula produces
-  rendered LaTeX in the notebook output.
+- `blender-bim --version` prints *Blender 4.5.4 LTS*.
+- The Bonsai add-on loads: opening
+  `src/native-tooling/samples/smoke.ifc` in `blender-bim` shows the
+  spatial tree in the BIM workspace, or the headless test
+
+  ```bash
+  blender-bim --background --python-expr "
+  import bpy; bpy.ops.bim.load_project(filepath='$PWD/samples/smoke.ifc');
+  print('OK')"
+  ```
+
+  prints `OK` and reports 2 columns.
+- `uv run python samples/dump_ifc_columns.py samples/smoke.ifc /tmp/cols.csv`
+  writes a two-row CSV.
+- `uv run jupyter nbconvert --to notebook --execute --inplace samples/beam_capacity.ipynb`
+  completes without error, and the executed notebook contains a
+  rendered LaTeX cell showing `M_p = 532.500 kN·m`.
+- `uv run jupyter nbconvert --to pdf samples/beam_capacity.ipynb`
+  writes `samples/beam_capacity.pdf` (needs `pandoc-cli` +
+  `texlive-plaingeneric` + `texlive-mathscience` on top of the
+  earlier texlive install).
 
 Back to [README](../README.md).
