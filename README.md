@@ -36,7 +36,7 @@ it were a native application.
 |                                                                        |                             |
 |   VS Code (Remote-SSH)       <========= virtio-net (NAT) ============> |  OpenSSH + VS Code Server   |
 |                                                                        |                             |
-|   ~/src/oma-eng              <========= virtiofs share =============>  |  Z:\src (same tree in guest)|
+|   ~/dev/oma-eng/src          <========= virtiofs share =============>  |  Z:\ (same tree in guest)   |
 |                                                                                                      |
 +------------------------------------------------------------------------------------------------------+
 ```
@@ -147,7 +147,7 @@ You'll know the setup is done when all of these are true:
   Blender and opens IFC files with a populated spatial tree; `jupyter
   lab` launches and a `%%render` cell with Handcalcs produces LaTeX
   output.
-- `Z:\src` in the guest lists the same files as `~/src/oma-eng/src`
+- `Z:\` in the guest lists the same files as `~/dev/oma-eng/src`
   on the host, and edits from Omarchy appear immediately.
 - `code --remote ssh-remote+windows-cad` from Omarchy opens a working
   VS Code session in the guest, with C# IntelliSense against

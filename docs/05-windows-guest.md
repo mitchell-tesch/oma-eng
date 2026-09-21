@@ -43,7 +43,7 @@ reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate" `
 ## 3. Nvidia Control Panel settings for CAD
 
 Open *Nvidia Control Panel* → *Manage 3D settings* → *Program Settings*
-and add `Rhino.exe` and `St7.exe`:
+and add `Rhino.exe` and `Strand7.exe`:
 
 | Setting | Value | Why |
 |---|---|---|
@@ -171,7 +171,7 @@ From the Omarchy host:
 
 ```bash
 code --install-extension ms-vscode-remote.remote-ssh
-code --remote ssh-remote+windows-cad ~/src/oma-eng/src
+code --remote ssh-remote+windows-cad ~/dev/oma-eng/src
 ```
 
 On the first connect, VS Code installs the remote server into the guest

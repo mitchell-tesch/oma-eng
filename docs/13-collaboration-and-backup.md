@@ -31,7 +31,7 @@ Same VFIO guest as the rest of the stack. Reasons:
 
 1. Download the Revu installer from the Bluebeam licensed-users
    portal to the Omarchy host, drop into
-   `~/src/oma-eng/src/vendor/`, and run from `Z:\vendor\` in the
+   `~/dev/oma-eng/src/vendor/`, and run from `Z:\vendor\` in the
    guest.
 2. Install with defaults.
 3. First launch prompts for a licence key or Bluebeam ID sign-in.
@@ -72,7 +72,7 @@ in bulk. Documented in the shipped *Revu Scripting Reference* PDF
 Because Actions run inside Revu (not from a shell), there's no
 edit-on-Omarchy debugger story here — but you can keep your Action
 `.rmv` scripts and Batch definition files in
-`~/src/oma-eng/src/bluebeam-actions/` on Omarchy and import them
+`~/dev/oma-eng/src/bluebeam-actions/` on Omarchy and import them
 into Revu from `Z:\bluebeam-actions\`.
 
 ## Cloud storage
@@ -96,7 +96,7 @@ Where you run the sync client matters:
   gives Revit's Cloud Model, Autodesk Docs, and Windows Explorer
   coherent state.
 - **Source code and scripts** — keep on **Omarchy** under
-  `~/src/oma-eng/src/`. virtiofs exposes them to the guest as `Z:\`
+  `~/dev/oma-eng/src/`. virtiofs exposes them to the guest as `Z:\`
   (see [doc 08](08-api-development.md)). Do all `git` work on
   Omarchy.
 - **Received drawings and RFIs** — download to `~/oma-eng-inbox/`
@@ -173,7 +173,7 @@ Five things to back up, on different schedules:
 | What | Where | Frequency | How |
 |---|---|---|---|
 | **Guest disk image** (`/var/lib/libvirt/images/windows-cad.qcow2`) | External drive or NAS | Weekly + before major Revit / ETABS updates | Shut down the guest cleanly, then `qemu-img convert -O qcow2 -c` to a copy on the backup target. Live backups risk a torn image. |
-| **Virtiofs source tree** (`~/src/oma-eng/`) | Git remote (GitHub / GitLab / self-hosted) | Every commit | Standard `git push`. No extra tooling. |
+| **Virtiofs source tree** (`~/dev/oma-eng/`) | Git remote (GitHub / GitLab / self-hosted) | Every commit | Standard `git push`. No extra tooling. |
 | **Guest `%APPDATA%` state** for Autodesk / pyRevit / Rhino / Bluebeam | Inside the guest disk image (covered) or a virtiofs-mounted host folder | Weekly | If you want per-app backups separate from the qcow2, use `robocopy /MIR` in the guest to a virtiofs-mounted host folder. |
 | **libvirt XML** (`configs/libvirt/windows-cad.xml`) | Git | Every edit | Already tracked in this repo. |
 | **Licence dongles** (physical HASP / CmStick sticks) | Locked drawer + a text file with each dongle's `lsusb` vendor:product IDs and a photo of the label | On receipt | Losing a physical dongle is a real business cost. Take a photo of the ID label and record the `lsusb` output at first plug-in so a replacement can be ordered against the right IDs. |

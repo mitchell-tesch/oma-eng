@@ -70,7 +70,7 @@ Three common models — all work in the guest:
 ## Installing Revit
 
 1. Download **Autodesk Access** from your Autodesk Account portal to
-   the Omarchy host, drop into `~/src/oma-eng/src/vendor/`, and run
+   the Omarchy host, drop into `~/dev/oma-eng/src/vendor/`, and run
    from `Z:\vendor\` in the guest. (Autodesk Access replaced the old
    Autodesk Desktop App in 2023.)
 2. Sign in with your Autodesk Account.
@@ -216,7 +216,7 @@ For **pyRevit scripts**: edit the `.py` on Omarchy, click *Reload*
 (`Ctrl+F5`) in the pyRevit tab, run.
 
 For **Grasshopper inside Revit**: standard `.gh` files. Save under
-`~/src/oma-eng/src/rhino-inside-revit/` on Omarchy — they open
+`~/dev/oma-eng/src/rhino-inside-revit/` on Omarchy — they open
 transparently inside the Revit-hosted Grasshopper canvas.
 
 ## Cross-integration

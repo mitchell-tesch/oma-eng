@@ -10,13 +10,13 @@ page ties the pieces together.
 ```
   Omarchy (Hyprland, VS Code, Git, terminal)
         │
-        │   Edit files under ~/src/oma-eng/src/
+        │   Edit files under ~/dev/oma-eng/src/
         ▼
-  virtiofs share ─────────────────────────► Z:\src\  in the guest
+  virtiofs share ─────────────────────────► Z:\  in the guest
         ▲                                     │
         │                                     │  Build / debug
         │                                     ▼
-  Remote-SSH  ◄─────────────  OpenSSH server  Rhino.exe / St7.exe
+  Remote-SSH  ◄─────────────  OpenSSH server  Rhino.exe / Strand7.exe
                                               │
                                               ▼
                               Nvidia dGPU (via VFIO)
@@ -74,16 +74,14 @@ src/
 
 ## Editing from Omarchy, running in the guest
 
-Open the whole tree remote:
+VS Code on Omarchy → *Remote Explorer* → *SSH* → `windows-cad` →
+*Connect in New Window*. In the new (green) window: *File ▸ Open
+Folder* → paste `Z:\` (or a specific project folder such as
+`Z:\rhino-plugin` or `Z:\strand7-api\csharp\HelloStrand7`).
 
-```bash
-code --remote ssh-remote+windows-cad ~/src/oma-eng/src
-```
-
-The `src/` folder in the remote window is `Z:\` (via
-virtiofs), which is the same inode as `~/src/oma-eng/src` on the
-host. Edit either place, the other sees it. This is not sync — it's the
-same file.
+`Z:\` in the guest is the same inode as `~/dev/oma-eng/src/` on the
+host, via virtiofs. Edit either place, the other sees it immediately
+— not sync, the same file.
 
 **SSH-session `Z:` caveat** — VirtIO-FS Service mounts `Z:` per
 interactive user session. Plain `ssh windows-cad` opens a
@@ -95,7 +93,7 @@ Workarounds:
   interactive session for the remote server), so building and
   running via VS Code works.
 - **Plain SSH**: run the command through PowerShell's user-session
-  helper, e.g. `ssh windows-cad "powershell -Command 'net use Z: /persistent:no & cd Z:\\src\\... & dotnet build'"`
+  helper, e.g. `ssh windows-cad "powershell -Command 'net use Z: /persistent:no & cd Z:\\ & dotnet build'"`
   — or add a persistent `net use` in a Task Scheduler *At log on*
   task that runs at boot with the SYSTEM account.
 
@@ -147,20 +145,27 @@ New-Item -ItemType SymbolicLink `
 
 ## Debugging
 
-`launch.json` in each C# project has a *Attach to Rhino* / *Attach to
-Strand7* configuration. Steps:
+VS Code Remote-SSH into the guest, F5. Each sample folder ships its
+own `.vscode/launch.json` with the right mode:
 
-1. Rhino/Strand7 already running in the guest.
-2. VS Code (Remote-SSH into guest) → *Run and Debug* → pick config.
-3. VS Code prompts for a process; pick `Rhino.exe` / `St7.exe`.
-4. Breakpoints on Omarchy hit inside the guest process.
-
-For pure `dotnet run` executables (Strand7 C# sample) use the *Launch*
-config — F5 launches under debugger.
-
-For Python, install the *Python* extension in the remote window; the
-default *Debug Current File* config works. Set `"justMyCode": false` in
-`launch.json` if you want to step into `pywin32`.
+- **Rhino / Grasshopper plugins** — *attach* via
+  [`src/rhino-plugin/.vscode/launch.json`](../src/rhino-plugin/.vscode/launch.json)
+  (`type: coreclr`, `processName: Rhino.exe`). Launch Rhino in the
+  guest, load the plugin, F5 — attaches to the single `Rhino.exe`
+  without a process picker. Grasshopper `.gha` components attach the
+  same way (Rhino hosts Grasshopper in-process).
+- **Strand7 C# sample** — *launch* via
+  [`src/strand7-api/csharp/HelloStrand7/.vscode/launch.json`](../src/strand7-api/csharp/HelloStrand7/.vscode/launch.json)
+  with a `dotnet build -c Debug` `preLaunchTask`. `HelloStrand7.exe`
+  is a standalone console app driving Strand7 through `St7API.dll` —
+  no `Strand7.exe` GUI process to attach to. F5 builds, launches,
+  hits your breakpoints.
+- **Python samples** — `debugpy` launch via each sample's
+  `.vscode/launch.json` (e.g.
+  [`src/strand7-api/python/.vscode/launch.json`](../src/strand7-api/python/.vscode/launch.json)).
+  Install the *Python* extension in the remote window on first open.
+  Set `"justMyCode": false` in the config if you want to step into
+  `pywin32`.
 
 > **Python + virtiofs caveat.** Setting breakpoints in a `.py` file
 > under `Z:\` fails with `OSError: [WinError 1005]` — `debugpy` calls
@@ -178,7 +183,7 @@ is no WSL here, so just Omarchy). Git on Windows over virtiofs is
 possible but has line-ending and permission quirks; skip it.
 
 ```bash
-cd ~/src/oma-eng
+cd ~/dev/oma-eng
 git status
 git add -A && git commit -m "..." && git push
 ```
@@ -192,17 +197,21 @@ guest's local NTFS for that workload.
 
 Same for `Grasshopper\Libraries` — keep them on the guest's `C:` drive.
 
-## When to *not* build in the guest
+## When you don't need the GPU pass-through
 
-Rhino 8's headless mode (`Rhino.Inside`, `Rhino.Compute`) works on
-Linux for pure geometry work. If you're building a service that only
-needs geometric operations (mesh, brep, curve maths) and no UI, you can
-skip the VM entirely and run `Rhino.Compute` on Omarchy directly. See
-the [Rhino Compute docs](https://developer.rhino3d.com/guides/compute/)
-and doc 06 §8.
+Everything in this repo needs a Windows runtime — RhinoCommon,
+Grasshopper, `St7API.dll`, CSi OAPI. None run natively on Linux. What
+you *can* skip when the workload is purely headless (`Rhino.Compute`
+serving geometry over HTTP, a nightly FEA batch, an unattended ETABS
+run) is the **GPU pass-through and Looking Glass**. Boot the guest
+without the `<hostdev>` GPU block attached, drive it via SSH, and
+give the 24 GiB of hugepages back to the host. `Rhino.Compute` still
+runs *inside the guest* — there's no Linux build of it in Rhino 8.
+See the [Rhino Compute docs](https://developer.rhino3d.com/guides/compute/)
+and [doc 06 §8](06-rhino-setup.md).
 
-For anything that touches Grasshopper's document model, the Strand7 COM
-API, or any UI, you need the VM.
+For anything that touches Grasshopper's canvas, a Strand7 model view,
+or any UI at all, you need the VM with GPU + LG.
 
 ## Exit criteria
 
@@ -212,8 +221,10 @@ API, or any UI, you need the VM.
 - Setting a breakpoint in `HelloGhComponent.SolveInstance()` and
   triggering it from a Grasshopper canvas in the guest hits the
   breakpoint in Omarchy's VS Code.
-- `hello_strand7.py` runs to completion; changing a value in the
-  script from Omarchy and re-running from the guest reflects the change
-  immediately.
+- `hello_strand7.py` runs to completion via
+  `py Z:\strand7-api\python\hello_strand7.py` in a guest PowerShell;
+  editing a value on Omarchy and re-running reflects the change
+  immediately. (For breakpoint-driven Python debug the file must live
+  on local NTFS, not `Z:\` — see Debugging above.)
 
 Continue to [09 — Troubleshooting](09-troubleshooting.md).

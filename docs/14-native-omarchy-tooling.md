@@ -74,7 +74,7 @@ inspector for the selected element.
 Bonsai's guts are `ifcopenshell` — a C++/Python library for
 reading and writing IFC. Use it directly for automation without the
 Blender GUI. Faster for batch work, and lets you keep IFC
-processing inside your normal `~/src/oma-eng/` Python scripts.
+processing inside your normal `~/dev/oma-eng/` Python scripts.
 
 ### Install
 

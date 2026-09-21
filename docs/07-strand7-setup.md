@@ -99,7 +99,7 @@ repo default to that path — set the `STRAND7_DIR` environment
 variable to override.
 
 If your Strand7 installer is on the Omarchy host, drop it into
-`~/src/oma-eng/src/vendor/` and it appears at `Z:\vendor\` in the
+`~/dev/oma-eng/src/vendor/` and it appears at `Z:\vendor\` in the
 guest. Run it from there.
 
 On first launch of Strand7 R3, the licence dialog offers the four
