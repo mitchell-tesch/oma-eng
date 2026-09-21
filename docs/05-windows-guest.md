@@ -56,6 +56,21 @@ and add `Rhino.exe` and `Strand7.exe`:
 Under *Manage 3D settings ▸ Global*, set **OpenGL rendering GPU** to the
 dGPU (there won't be another choice in the guest, but confirm).
 
+> **Muxless-laptop caveat.** On mobile Optimus cards with no dGPU
+> display output (this repo's HP ZBook Firefly G11 falls in this class
+> — see [doc 04 §2b](04-looking-glass.md)), Nvidia Control Panel
+> refuses to open with *"You are using a display not attached to an
+> NVIDIA GPU"*. The driver itself works fine — Rhino, Strand7 and
+> Excel all land on the dGPU (verify with `nvidia-smi` in an admin
+> PowerShell). The per-EXE Program Settings tweaks above are also less
+> important here because the guest sits on the *High-Performance*
+> Windows power plan (§1), which keeps the driver at working clocks by
+> default. For belt-and-braces per-EXE profiles, use
+> [NVIDIA Profile Inspector](https://github.com/Orbmu2k/nvidiaProfileInspector)
+> — it writes the same driver profile store as the Control Panel
+> without the display-attached check. See also
+> [doc 09 § Nvidia Control Panel won't open](09-troubleshooting.md).
+
 ## 4. Disable the QXL/basic display adapter
 
 Once Looking Glass and the Nvidia driver are working, the fallback QXL

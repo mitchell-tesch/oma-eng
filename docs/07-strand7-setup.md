@@ -125,9 +125,12 @@ sitting on a model view:
 nvidia-smi
 ```
 
-The `Processes` block should list `Strand7.exe` with non-zero
-`GPU Memory Usage`. If it does, viewport draws are on the passthrough
-Nvidia GPU — done.
+The `Processes` block should list `Strand7.exe`. That's the pass
+condition — the process being listed means NVML confirms it holds a
+GPU context, so viewport draws are on the passthrough Nvidia GPU. The
+*GPU Memory Usage* column shows `N/A` because Windows manages VRAM
+through WDDM and doesn't expose per-process byte counts to NVML
+— expected, see [doc 09](09-troubleshooting.md).
 
 If `Strand7.exe` is missing from that list, the app is on the QXL /
 Microsoft Basic Render Driver fallback. Cross-check via Task Manager

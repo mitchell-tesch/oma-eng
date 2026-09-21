@@ -125,14 +125,49 @@ graphics acceleration explicitly:
 *File ▸ Options ▸ Advanced ▸ Display* → **untick** *Disable
 hardware graphics acceleration*.
 
-Also in the Nvidia Control Panel (see doc 05 §3), add `EXCEL.EXE` to
-the program list and set *Power management mode = Prefer maximum
-performance*.
+Nvidia Control Panel per-EXE tweaks are optional here — the Control
+Panel doesn't open on muxless-laptop setups (see [doc 05 §3
+*Muxless-laptop caveat*](05-windows-guest.md)) and the guest's
+*High-Performance* Windows power plan already keeps the dGPU at
+working clocks. Confirm Excel is on the dGPU with `nvidia-smi` in an
+admin PowerShell inside the guest while Excel is open: `EXCEL.EXE` in
+the *Processes* block is the pass condition. GPU memory shows `N/A`
+under WDDM — expected, see
+[doc 09 § `nvidia-smi` shows `N/A`](09-troubleshooting.md).
 
 ## API dev: driving Excel from your engineering scripts
 
 Once Excel lives in the same session, this pattern works out of the
-box in both directions:
+box in both directions.
+
+### Smoke test — Python + xlwings
+
+Repo sample:
+[`src/office-integration/python/hello_excel.py`](../src/office-integration/python/hello_excel.py)
+— opens a new workbook, writes A1:A2, prints Excel's PID. From an
+interactive PowerShell in the guest (Looking Glass or VS Code
+Remote-SSH; not plain `ssh windows-cad`, which doesn't hold a COM
+session):
+
+```powershell
+# Mirror the project to local NTFS so uv's .venv/ stays off virtiofs.
+robocopy Z:\office-integration\python C:\dev\office-integration\python /MIR
+cd C:\dev\office-integration\python
+uv sync
+uv run hello_excel.py
+```
+
+Expected output:
+
+```
+Wrote A1:A2. Excel PID: <N> (see the visible workbook).
+```
+
+Excel opens with the two cells populated. `nvidia-smi` in a second
+PowerShell lists `EXCEL.EXE` under *Processes* (memory shows `N/A`
+under WDDM — see doc 09).
+
+### Full integration examples
 
 **From RhinoCommon C# — dump object metadata:**
 
@@ -192,11 +227,15 @@ Same COM constraint applies — Excel must be in the same VM.
 
 - Excel opens in the guest, activated, no warnings.
 - *File ▸ Options ▸ Advanced ▸ Display* has *Disable hardware
-  graphics acceleration* **unticked**, and Excel's viewport interacts
-  with the Nvidia GPU under load (visible in `nvidia-smi` running in
-  the guest).
-- From Rhino's Python 3 component, `import xlwings; xw.Book()` opens
-  a new workbook in Excel.
+  graphics acceleration* **unticked**, and `nvidia-smi` in the guest
+  lists `EXCEL.EXE` in the *Processes* block while Excel is open
+  (memory `N/A` under WDDM — expected, see doc 09).
+- `uv run hello_excel.py` in `C:\dev\office-integration\python`
+  prints `Wrote A1:A2. Excel PID: <N>` and Excel shows the two cells
+  populated.
+- Optional: same works from Rhino 8's embedded Python 3 component
+  (`import xlwings; xw.Book()` inside a Grasshopper CPython
+  component) — that Python is separate from the standalone one above.
 - Optional: [`omarchy windows vm launch`](https://omarchy.org/manual/windows-vm)
   starts the separate Office-only VM for casual use.
 

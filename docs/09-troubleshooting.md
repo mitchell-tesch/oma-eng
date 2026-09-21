@@ -371,6 +371,65 @@ from `Z:\`.
 
 ---
 
+## Office / Excel
+
+### Install fails with error `30094-44` (or `30094-1011`, `30094-4`)
+
+The `30094-XX` family is Click-to-Run failing to download product bits
+from Microsoft's CDN. Almost always because **BITS is stopped** — the
+service Click-to-Run uses to fetch the payload. Diagnose:
+
+```powershell
+Get-Service BITS, wuauserv, cryptsvc, ClickToRunSvc |
+    Format-Table Name, Status, StartType
+```
+
+Fix:
+
+```powershell
+Set-Service BITS -StartupType Automatic
+Start-Service BITS
+```
+
+Then retry the install. If a partial install is already there
+(`ClickToRunSvc` shows up in `Get-Service`), open *Settings ▸ Apps ▸
+Installed apps* → the Office entry → *⋯ ▸ Modify ▸ Online repair*.
+If no entry exists, uninstall Office remnants with
+[SaRA](https://aka.ms/SaRA-officeUninstallFromPC), reboot the guest,
+and reinstall via the M365 web installer at <https://office.com>. The
+web installer is more reliable than winget for this — winget's
+`Microsoft.Office` alias frequently mismatches your M365 tenant
+channel.
+
+### Nvidia Control Panel won't open
+
+*"You are using a display not attached to an NVIDIA GPU"* on a muxless
+laptop. Correct diagnosis: on mobile Optimus with no dGPU display
+output, the display is VDD or the iGPU. The Control Panel GUI checks
+"is a display attached to me?" and refuses. The driver itself works
+fine and Rhino/Strand7/Excel all land on the dGPU — verify with
+`nvidia-smi` in an admin PowerShell (process listing is ground truth).
+
+If you need per-EXE profile tweaks anyway, use
+[NVIDIA Profile Inspector](https://github.com/Orbmu2k/nvidiaProfileInspector).
+It talks to the driver's profile database directly, no GUI check. On
+this repo's setup (guest on High-Performance power plan), the Program
+Settings tweaks from doc 05 §3 are cosmetic anyway — the dGPU keeps
+working clocks by default.
+
+### `nvidia-smi` shows `N/A` for GPU memory
+
+Expected on Windows guests. Windows manages VRAM through WDDM, which
+doesn't expose per-process byte counts to NVML. The process being
+**listed** in `nvidia-smi`'s *Processes* block is confirmation that it
+holds a GPU context — that's the ground truth. For actual VRAM byte
+counts on Windows, use Task Manager → *Performance* ▸ *GPU 1 (NVIDIA)*
+or GPU-Z. NVML only reports real numbers on cards in TCC mode
+(datacenter / select workstation only — A500 Laptop, GeForce, and most
+mobile workstation cards are WDDM-only on Windows).
+
+---
+
 ## Host performance regressions
 
 ### Guest CPU stutters on scene tumble
