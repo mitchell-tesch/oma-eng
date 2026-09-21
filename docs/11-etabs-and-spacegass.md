@@ -253,22 +253,74 @@ REST API that the samples in this repo target.
 
 1. Download from the licensed-users page on spacegass.com to the host,
    drop into `~/dev/oma-eng/src/vendor/`, run from `Z:\vendor\`.
-2. If your licence is dongle-based, install the dongle runtime (Sentinel
-   HASP or CodeMeter/WIBU depending on your dongle vintage — the
-   installer usually prompts).
+2. Licence model:
+   - **Cloud / subscription** — sign in through SPACE GASS's licence
+     dialog with your StruSoft account. Snapshot-revert-safe like
+     CSiCloud and Strand7 CLM. Uses the guest's default NAT for
+     outbound HTTPS; no dongle setup or LAN server needed.
+   - **HASP dongle / CmStick (WIBU)** — install the matching runtime
+     when the installer prompts; pass the dongle through with the
+     `<hostdev>` block from §Physical dongles above.
+   - **StruSoft network licence** — enter server address at first
+     launch.
 3. Launch SPACE GASS at least once. This initialises the data files
    the API service depends on.
-4. Verify graphics: *Settings ▸ Preferences ▸ Display*. Renderer should
-   read the Nvidia card.
-5. Start the API service (optional, only if you plan to use the API —
-   the GUI does not need it):
-   - Double-click the **SPACE GASS API** shortcut under the SPACE GASS
-     Windows application folder, or
-   - `"C:\Program Files\SPACE GASS 14.5\SpaceGassApi.exe"` from an
-     admin PowerShell.
-   The service listens on `http://localhost:34560`. Browse
-   `http://localhost:34560/swagger` for the interactive endpoint
-   catalogue.
+
+### Verify GPU usage — SpaceGass
+
+Same `nvidia-smi` check as ETABS/SAP2000: with SPACE GASS open on a
+model, `SpaceGass.exe` should appear in the *Processes* block (memory
+`N/A` under WDDM). *Settings ▸ Preferences ▸ Display* also reports
+the OpenGL renderer as a secondary check.
+
+### Start the API service
+
+Only needed if you plan to use the REST API — the GUI works
+standalone. Discover the install path (version-agnostic):
+
+```powershell
+Get-ChildItem "C:\Program Files\SPACE GASS *" -Directory |
+    Select-Object -ExpandProperty FullName
+# e.g. C:\Program Files\SPACE GASS 14.5
+#   or C:\Program Files\SPACE GASS 15.0
+```
+
+Then launch the API service:
+
+- Double-click the **SPACE GASS API** Start-menu shortcut, or
+- `Start-Process "$installPath\SpaceGassApi.exe"` from an admin
+  PowerShell, substituting the path from `Get-ChildItem`.
+
+The service listens on `http://localhost:34560`. Windows Firewall
+prompts on first launch — allow *Private networks* (leave *Public*
+off). Browse `http://localhost:34560/swagger` for the interactive
+endpoint catalogue.
+
+## REST API smoke test — SpaceGass
+
+With the API service running (see §Installing SpaceGass ▸ Start the
+API service), from an admin PowerShell in the guest:
+
+```powershell
+Invoke-RestMethod http://localhost:34560/api/v1/service/info
+```
+
+Expected: a small JSON object with fields like `version`,
+`apiVersion`, `serviceStatus`. A 200 response with a SpaceGass
+version string in the body is a pass — the whole HTTP-plus-service
+chain is working end-to-end.
+
+For a fuller smoke test (opens a shipped sample, runs linear-static,
+prints reactions), see the repo samples:
+
+- Python: [`src/spacegass-api/python/hello_spacegass.py`](../src/spacegass-api/python/hello_spacegass.py)
+- C#: [`src/spacegass-api/csharp/HelloSpaceGass/`](../src/spacegass-api/csharp/HelloSpaceGass/)
+
+Both use the vendor-generated `space-gass-api` / `SpaceGassApi` client
+packages (Microsoft Kiota under the hood). See
+[`src/spacegass-api/README.md`](../src/spacegass-api/README.md) for
+port-forward notes if you want to drive the API from Omarchy over the
+guest's virtio-net interface rather than from inside the guest.
 
 ## C# OAPI smoke test — ETABS
 
