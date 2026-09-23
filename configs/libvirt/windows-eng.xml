@@ -26,8 +26,8 @@
   <title>Rhino 8 + Strand7 R3 CAD/FEA guest</title>
   <description>Windows 11 with Nvidia dGPU passthrough for CAD/FEA on Omarchy.</description>
 
-  <memory unit='KiB'>25165824</memory>
-  <currentMemory unit='KiB'>25165824</currentMemory>
+  <memory unit='KiB'>33554432</memory>
+  <currentMemory unit='KiB'>33554432</currentMemory>
   <!-- Optional <memtune> block. libvirt on Arch/Omarchy accepts
        <locked/> without an explicit hard_limit, but older libvirt
        (< 5.0) refuses. If `virsh define` errors with

@@ -316,6 +316,25 @@ sudo install -m 644 configs/sysctl.d/99-vm-hugepages.conf /etc/sysctl.d/
 sudo sysctl --system
 ```
 
+> **Keep the cmdline and the sysctl drop-in in sync.** These two paths
+> aren't mutually exclusive — if you install the sysctl file *and* set
+> `hugepages=N` on the kernel cmdline, both values must match. At every
+> boot the kernel reserves N pages first (from cmdline), then
+> `systemd-sysctl.service` runs and rewrites `vm.nr_hugepages` to
+> whatever the drop-in says. A drift like `hugepages=32` on cmdline but
+> `vm.nr_hugepages = 24` in the drop-in leaves you with 24 pages after
+> boot, silently. Verification signature: `dmesg | grep -i hugetlb`
+> reports the cmdline count, `/proc/meminfo` reports the sysctl count.
+>
+> [`scripts/set-guest-memory <GiB>`](../scripts/set-guest-memory) keeps
+> every duplicated field in sync in one shot — the three repo files, the
+> installed `/etc/sysctl.d/` drop-in (via `sudo install` + `sysctl
+> --system`), and the libvirt persistent config for `windows-eng` (via
+> `virsh setmaxmem`/`setmem --config` for a defined guest, or `virsh
+> define` for a fresh install). limine.conf stays manual by design.
+> Pass `--no-apply` to touch only the repo files, or `--dry-run` to
+> diff without changing anything.
+
 ## 7. Reboot
 
 ```bash

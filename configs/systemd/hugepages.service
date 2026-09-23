@@ -8,7 +8,7 @@ Before=libvirtd.service
 Type=oneshot
 RemainAfterExit=yes
 # Adjust the number to match your VM memory allocation (see doc 02 § 2).
-ExecStart=/bin/sh -c 'echo 24 > /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages'
+ExecStart=/bin/sh -c 'echo 32 > /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages'
 ExecStop=/bin/sh -c 'echo 0 > /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages'
 
 [Install]
