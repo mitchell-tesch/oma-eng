@@ -292,7 +292,17 @@
     </shmem>
     -->
 
-    <!-- Virtiofs share: exposes host src/ directly into guest as tag 'src' -->
+    <!-- Virtiofs shares — one <filesystem> block per host directory to
+         expose to the guest. Each block's <target dir='TAG'/> is the
+         mount tag the Windows VirtIO-FS Service uses to auto-assign a
+         drive letter; the Windows service picks letters in reverse
+         (Z:, Y:, X:, ...) so the top-listed share is usually Z:.
+
+         Use scripts/set-guest-share to inspect and edit these blocks
+         (add HOST-PATH TAG / remove TAG); see the script header for
+         details. -->
+
+    <!-- Primary share: this repo's src/ tree at Z:\ in the guest -->
     <!-- EDIT: source dir absolute path -->
     <filesystem type='mount' accessmode='passthrough'>
       <driver type='virtiofs' queue='1024'/>
@@ -301,6 +311,19 @@
       </binary>
       <source dir='/home/mzt/dev/oma-eng/src'/>
       <target dir='src'/>
+    </filesystem>
+
+    <!-- Secondary share: whole ~/dev/ tree at Y:\ in the guest, so
+         sibling repos alongside oma-eng are reachable too. Remove
+         this block (or use set-guest-share remove-dev) to skip. -->
+    <!-- EDIT: source dir absolute path -->
+    <filesystem type='mount' accessmode='passthrough'>
+      <driver type='virtiofs' queue='1024'/>
+      <binary path='/usr/lib/virtiofsd'>
+        <cache mode='always'/>
+      </binary>
+      <source dir='/home/mzt/dev'/>
+      <target dir='dev'/>
     </filesystem>
 
     <!-- Nvidia dGPU passthrough.

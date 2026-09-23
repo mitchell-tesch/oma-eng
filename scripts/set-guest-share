@@ -1,0 +1,388 @@
+#!/usr/bin/env bash
+# set-guest-share — manage virtiofs <filesystem> shares in the guest
+# XML, and sync the change to the live libvirt domain.
+#
+# The Windows virtiofs.exe service handles ONE tag per instance, so
+# each extra share on the guest also needs its own Windows service
+# (e.g. VirtioFsSvc-dev with `-t dev -m *`). This helper edits the
+# host-side XML and attaches / detaches the PCI device; the guest-side
+# service install/uninstall snippet is printed at the end.
+#
+# Adding a share is a two-step operation on the host:
+#   * shutoff guest: virsh define (or setmaxmem-style --config)
+#   * running guest: virsh attach-device --live --config
+#
+# Usage:
+#     scripts/set-guest-share --list
+#     scripts/set-guest-share --add HOST-PATH [TAG]     # add / update
+#     scripts/set-guest-share --remove TAG              # remove
+#     scripts/set-guest-share --dry-run --add PATH TAG  # preview
+#     scripts/set-guest-share --no-apply --add PATH TAG # repo-only
+#     scripts/set-guest-share --help
+#
+# If TAG is omitted, the basename of HOST-PATH is used. Re-adding an
+# existing TAG rewrites its source path in-place (idempotent).
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+XML="$REPO_ROOT/configs/libvirt/windows-eng.xml"
+DOMAIN="windows-eng"
+VIRSH="virsh --connect qemu:///system"
+
+usage() {
+    sed -n '2,24p' "$0"
+    exit "${1:-0}"
+}
+
+# Print the <filesystem> block for TAG rooted at HOST_PATH.
+share_block() {
+    local host_path="$1" tag="$2"
+    cat <<EOF
+    <filesystem type='mount' accessmode='passthrough'>
+      <driver type='virtiofs' queue='1024'/>
+      <binary path='/usr/lib/virtiofsd'>
+        <cache mode='always'/>
+      </binary>
+      <source dir='${host_path}'/>
+      <target dir='${tag}'/>
+    </filesystem>
+EOF
+}
+
+# Parse the repo XML for its <filesystem> shares. awk-only so the
+# script is self-contained (no xmllint dependency, no XML-comment
+# lint sensitivity).
+list_shares() {
+    awk '
+        /<filesystem/           { in_fs=1; src=""; tgt=""; next }
+        in_fs && /<source dir=/ { match($0, /dir='"'"'([^'"'"']+)'"'"'/, a); src=a[1] }
+        in_fs && /<target dir=/ { match($0, /dir='"'"'([^'"'"']+)'"'"'/, a); tgt=a[1] }
+        in_fs && /<\/filesystem/ {
+            if (tgt != "") printf "  %-6s  %s\n", tgt, src
+            in_fs=0
+        }
+    ' "$XML"
+}
+
+# Return 0 if a <filesystem> with target=TAG exists in $XML.
+share_exists() {
+    local tag="$1"
+    grep -qE "<target dir='${tag}'/>" "$XML"
+}
+
+# Replace the <filesystem> block whose target is TAG. Prints the new XML.
+replace_share() {
+    local tag="$1" host_path="$2"
+    awk -v tag="$tag" -v host="$host_path" '
+        BEGIN { in_fs=0; buf="" }
+        /<filesystem[[:space:]]/ { in_fs=1; buf=$0 ORS; next }
+        in_fs {
+            buf = buf $0 ORS
+            if ($0 ~ "<target dir=\x27" tag "\x27/>") {
+                target_match = 1
+            }
+            if ($0 ~ "</filesystem>") {
+                if (target_match) {
+                    # Emit a fresh block preserving leading indent.
+                    gsub(/'"'"'[^'"'"']+'"'"'/, "'"'"'PLACEHOLDER'"'"'", buf)
+                    print "    <filesystem type='"'"'mount'"'"' accessmode='"'"'passthrough'"'"'>"
+                    print "      <driver type='"'"'virtiofs'"'"' queue='"'"'1024'"'"'/>"
+                    print "      <binary path='"'"'/usr/lib/virtiofsd'"'"'>"
+                    print "        <cache mode='"'"'always'"'"'/>"
+                    print "      </binary>"
+                    print "      <source dir='"'"'" host "'"'"'/>"
+                    print "      <target dir='"'"'" tag "'"'"'/>"
+                    print "    </filesystem>"
+                } else {
+                    printf "%s", buf
+                }
+                in_fs=0; buf=""; target_match=0
+            }
+            next
+        }
+        { print }
+    ' "$XML"
+}
+
+# Insert a fresh <filesystem> block just before the "Nvidia dGPU"
+# comment (the anchor that ends the shares group in the shipped XML).
+insert_share() {
+    local tag="$1" host_path="$2"
+    local block
+    block="$(share_block "$host_path" "$tag")"
+    awk -v block="$block" '
+        /<!-- Nvidia dGPU passthrough\./ && !inserted {
+            print ""
+            print "    <!-- Added by scripts/set-guest-share -->"
+            print block
+            print ""
+            inserted=1
+        }
+        { print }
+    ' "$XML"
+}
+
+# Remove the <filesystem> block whose target is TAG. Also drops the
+# preceding "Added by scripts/set-guest-share" marker if present.
+remove_share() {
+    local tag="$1"
+    awk -v tag="$tag" '
+        BEGIN { in_fs=0; buf="" }
+        /<!-- Added by scripts\/set-guest-share -->/ {
+            pending_marker = $0
+            next
+        }
+        /<filesystem[[:space:]]/ { in_fs=1; buf=$0 ORS; target_match=0; next }
+        in_fs {
+            buf = buf $0 ORS
+            if ($0 ~ "<target dir=\x27" tag "\x27/>") target_match = 1
+            if ($0 ~ "</filesystem>") {
+                if (!target_match) {
+                    if (pending_marker != "") print pending_marker
+                    printf "%s", buf
+                }
+                in_fs=0; buf=""; target_match=0; pending_marker=""
+            }
+            next
+        }
+        {
+            if (pending_marker != "") { print pending_marker; pending_marker="" }
+            print
+        }
+    ' "$XML"
+}
+
+# --- Argument parsing -----------------------------------------------------
+
+action=""
+host_path=""
+tag=""
+dry=0
+no_apply=0
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)  usage 0 ;;
+        --list)     action="list"; shift ;;
+        --add)
+            action="add"
+            shift
+            [[ $# -ge 1 ]] || { echo "--add needs HOST-PATH" >&2; usage 2; }
+            host_path="$1"; shift
+            if [[ $# -ge 1 && "$1" != --* ]]; then
+                tag="$1"; shift
+            fi
+            ;;
+        --remove)
+            action="remove"
+            shift
+            [[ $# -ge 1 ]] || { echo "--remove needs TAG" >&2; usage 2; }
+            tag="$1"; shift
+            ;;
+        --dry-run)   dry=1; shift ;;
+        --no-apply)  no_apply=1; shift ;;
+        *)           echo "Unknown arg: $1" >&2; usage 2 ;;
+    esac
+done
+
+if [[ ! -f "$XML" ]]; then
+    echo "Missing repo file: $XML" >&2
+    echo "Run this script from a checked-out oma-eng tree." >&2
+    exit 1
+fi
+
+# --- --list ---------------------------------------------------------------
+
+if [[ "$action" == "list" || -z "$action" ]]; then
+    printf 'Virtiofs shares in %s:\n' "$XML"
+    printf '  TAG     HOST PATH\n'
+    printf '  ---     ---------\n'
+    list_shares
+    if [[ -z "$action" ]]; then
+        echo
+        echo "(no action specified; use --add or --remove to change state)"
+        usage 0
+    fi
+    exit 0
+fi
+
+# --- --add / --remove common validation -----------------------------------
+
+if [[ "$action" == "add" ]]; then
+    if [[ -z "$host_path" ]]; then
+        echo "Missing HOST-PATH for --add" >&2; exit 2
+    fi
+    # Absolute path required for libvirt.
+    case "$host_path" in
+        /*) : ;;
+        *)  echo "HOST-PATH must be absolute, got: $host_path" >&2; exit 2 ;;
+    esac
+    # Strip trailing slash to keep the XML canonical.
+    host_path="${host_path%/}"
+    if [[ ! -d "$host_path" ]]; then
+        echo "HOST-PATH does not exist or is not a directory: $host_path" >&2
+        exit 2
+    fi
+    if [[ -z "$tag" ]]; then
+        tag="$(basename "$host_path")"
+    fi
+    # Tag is used as an XML attribute + as an ID libvirt attaches by;
+    # keep it conservative.
+    if ! [[ "$tag" =~ ^[A-Za-z0-9_-]{1,32}$ ]]; then
+        echo "TAG must be 1-32 chars of [A-Za-z0-9_-], got: $tag" >&2
+        exit 2
+    fi
+fi
+
+if [[ "$action" == "remove" && -z "$tag" ]]; then
+    echo "Missing TAG for --remove" >&2; exit 2
+fi
+
+# --- Repo XML edit --------------------------------------------------------
+
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
+
+if [[ "$action" == "add" ]]; then
+    if share_exists "$tag"; then
+        replace_share "$tag" "$host_path" > "$tmp"
+        edit_kind="replace"
+    else
+        insert_share "$tag" "$host_path" > "$tmp"
+        edit_kind="insert"
+    fi
+else  # remove
+    if ! share_exists "$tag"; then
+        echo "No <filesystem> with target='$tag' found — nothing to remove."
+        exit 0
+    fi
+    remove_share "$tag" > "$tmp"
+    edit_kind="remove"
+fi
+
+if cmp -s "$tmp" "$XML"; then
+    printf '  ok  %s (already at target)\n' "$XML"
+elif (( dry )); then
+    printf '=== %s (%s) ===\n' "$XML" "$edit_kind"
+    diff -u "$XML" "$tmp" || true
+    echo
+    echo "(dry run — no files modified)"
+    exit 0
+else
+    mv "$tmp" "$XML"
+    trap - EXIT
+    printf '  new %s (%s)\n' "$XML" "$edit_kind"
+fi
+
+# --- Live libvirt sync ----------------------------------------------------
+
+echo
+printf '=== Live libvirt state ===\n'
+
+apply=1
+if (( dry )) || (( no_apply )); then apply=0; fi
+
+if ! command -v virsh >/dev/null 2>&1; then
+    printf '  --- virsh not on PATH; skipping libvirt sync\n'
+    exit 0
+fi
+
+if ! $VIRSH dominfo "$DOMAIN" >/dev/null 2>&1; then
+    if (( apply )); then
+        printf '  def %s (fresh install, virsh define from repo XML)\n' "$DOMAIN"
+        $VIRSH define "$XML"
+    else
+        printf '  new %s not defined; would run: %s define %s\n' \
+            "$DOMAIN" "$VIRSH" "$XML"
+    fi
+    exit 0
+fi
+
+dom_state="$($VIRSH domstate "$DOMAIN" 2>/dev/null || echo unknown)"
+
+# Build a one-block device XML for attach-device / detach-device.
+dev_xml="$(mktemp --suffix=.xml)"
+trap 'rm -f "$dev_xml"' EXIT
+if [[ "$action" == "add" ]]; then
+    share_block "$host_path" "$tag" > "$dev_xml"
+elif [[ "$action" == "remove" ]]; then
+    # For detach we need to know the source path currently in the
+    # LIVE domain (in case it differs from the repo XML). Grab it.
+    live_src="$($VIRSH dumpxml "$DOMAIN" \
+        | awk -v tag="$tag" '
+            /<filesystem[[:space:]]/ { in_fs=1; src=""; next }
+            in_fs && /<source dir=/ { match($0, /dir='"'"'([^'"'"']+)'"'"'/, a); src=a[1] }
+            in_fs && /<target dir=/ {
+                if ($0 ~ "<target dir=\x27" tag "\x27/>") { print src; exit }
+            }
+            in_fs && /<\/filesystem>/ { in_fs=0 }
+        ')"
+    if [[ -z "$live_src" ]]; then
+        printf '  --- %s has no live <filesystem target=%s>; nothing to detach\n' \
+            "$DOMAIN" "$tag"
+        # Still fall through so a --config-only prune runs below.
+        live_src=""
+    fi
+    if [[ -n "$live_src" ]]; then
+        share_block "$live_src" "$tag" > "$dev_xml"
+    fi
+fi
+
+if [[ "$dom_state" == "running" ]]; then
+    if (( apply )); then
+        if [[ "$action" == "add" ]]; then
+            printf '  att %s <filesystem target=%s> live+config\n' "$DOMAIN" "$tag"
+            $VIRSH attach-device "$DOMAIN" "$dev_xml" --live --config
+        elif [[ "$action" == "remove" && -n "$live_src" ]]; then
+            printf '  det %s <filesystem target=%s> live+config\n' "$DOMAIN" "$tag"
+            $VIRSH detach-device "$DOMAIN" "$dev_xml" --live --config
+        fi
+    else
+        printf '  --- %s running; would run:\n' "$DOMAIN"
+        if [[ "$action" == "add" ]]; then
+            printf '          %s attach-device %s %s --live --config\n' \
+                "$VIRSH" "$DOMAIN" "$dev_xml"
+        elif [[ "$action" == "remove" && -n "$live_src" ]]; then
+            printf '          %s detach-device %s %s --live --config\n' \
+                "$VIRSH" "$DOMAIN" "$dev_xml"
+        fi
+    fi
+    # Windows virtiofs.exe handles one tag per service instance, so a new
+    # tag on the guest needs its own service (and removal needs its own
+    # cleanup). Print the corresponding sc.exe snippet.
+    if [[ "$action" == "add" ]]; then
+        cat <<EOF
+
+Guest-side follow-up (Looking Glass PowerShell or Remote-SSH, admin):
+
+  # One virtiofs.exe service instance per tag. Install once:
+  sc.exe create VirtioFsSvc-${tag} binPath= "\"C:\\Program Files\\Virtio-Win\\VioFS\\virtiofs.exe\" -t ${tag} -m *" start= auto DisplayName= "VirtIO-FS Service (${tag})"
+  net start VirtioFsSvc-${tag}
+
+  # Explorer then shows a new drive letter (Y:, X:, ... auto-picked).
+  # If it doesn't, virtio-win-guest-tools was never installed — see
+  # docs/03-vm-provisioning.md §6.
+EOF
+    elif [[ "$action" == "remove" ]]; then
+        cat <<EOF
+
+Guest-side follow-up (Looking Glass PowerShell or Remote-SSH, admin):
+
+  # Stop and remove the paired service instance for this tag:
+  net stop VirtioFsSvc-${tag}
+  sc.exe delete VirtioFsSvc-${tag}
+EOF
+    fi
+elif [[ "$dom_state" == "shut off" ]]; then
+    if (( apply )); then
+        printf '  def %s (shutoff, virsh define syncs from repo XML)\n' "$DOMAIN"
+        $VIRSH define "$XML"
+    else
+        printf '  --- %s shut off; would run: %s define %s\n' \
+            "$DOMAIN" "$VIRSH" "$XML"
+    fi
+else
+    printf '  --- %s in unexpected state (%s); resolve manually\n' \
+        "$DOMAIN" "$dom_state"
+fi

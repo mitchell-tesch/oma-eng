@@ -10,9 +10,11 @@ page ties the pieces together.
 ```
   Omarchy (Hyprland, VS Code, Git, terminal)
         │
-        │   Edit files under ~/dev/oma-eng/src/
+        │   Edit files under ~/dev/oma-eng/src/            (this repo)
+        │   Edit files under ~/dev/<sibling-repo>/         (any other repo)
         ▼
-  virtiofs share ─────────────────────────► Z:\  in the guest
+  virtiofs shares ────────────────────────► Z:\  in the guest  (this repo's src/)
+                                            Y:\  in the guest  (whole ~/dev/ tree)
         ▲                                     │
         │                                     │  Build / debug
         │                                     ▼
@@ -26,6 +28,20 @@ page ties the pieces together.
 - **Build & run** in the guest — because the SDKs (RhinoCommon, Strand7
   COM) only exist on Windows.
 - **Debug** in VS Code Remote-SSH — one keystroke round trip.
+
+Two virtiofs shares ship with `configs/libvirt/windows-eng.xml`:
+
+- **`Z:`** ↔ `~/dev/oma-eng/src/` (this repo's source tree). All the
+  sample project paths in this doc use `Z:\`.
+- **`Y:`** ↔ `~/dev/` (the parent — every repo you clone alongside
+  `oma-eng`). Use `Y:\<repo>\` when working on sibling projects that
+  aren't part of oma-eng itself.
+
+To add more shares later, use
+[`scripts/set-guest-share`](../scripts/set-guest-share) — it edits
+the XML, hot-attaches the device to the live guest, and prints the
+`sc.exe create` snippet for the paired Windows service. See doc 03
+§6 for the initial `Y:` service install.
 
 ## Directory layout under `src/`
 

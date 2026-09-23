@@ -29,6 +29,17 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   across `windows-eng.xml`, `99-vm-hugepages.conf`, and
   `hugepages.service`; prints the `/boot/limine.conf` snippet to
   edit by hand.
+- Second virtiofs share `dev` in `configs/libvirt/windows-eng.xml`
+  exposing `~/dev/` at `Y:\` in the guest, so sibling repos next
+  to `oma-eng` are reachable without a second copy. The existing
+  `src` share (`Z:\` ↔ `~/dev/oma-eng/src/`) is unchanged so every
+  path reference in docs 06–14 keeps working.
+- `scripts/set-guest-share` helper — lists / adds / removes
+  `<filesystem>` blocks in `windows-eng.xml`, hot-attaches (or
+  detaches) the PCI device on the running guest via `virsh
+  attach-device --live --config`, and prints the paired guest-side
+  `sc.exe create VirtioFsSvc-<tag>` snippet needed because
+  `virtiofs.exe` handles one tag per service instance.
 - GitHub issue templates (`.github/ISSUE_TEMPLATE/`).
 - CI now runs `dotnet restore` on `HelloSpaceGass.csproj` and
   `pip install --dry-run` on every `requirements.txt` alongside the

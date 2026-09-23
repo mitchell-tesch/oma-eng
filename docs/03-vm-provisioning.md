@@ -73,8 +73,17 @@ Placeholders to change (search for `EDIT:` for XML-comment markers and
   applies to your host.
 - **Disk source path** — to the qcow2 you just created.
 - **ISO paths** — the Windows ISO and virtio-win.iso for install.
-- **Virtiofs source** — set to the absolute path of `src/` in this
-  cloned repo, e.g. `$HOME/src/oma-eng/src`.
+- **Virtiofs sources** — the shipped XML has two `<filesystem>`
+  blocks. Point their `<source dir='...'/>` values at:
+  - `~/dev/oma-eng/src` (tag `src`, appears as `Z:` in the guest — the
+    walkthroughs in doc 06 onward all reference `Z:\<subproject>`);
+  - `~/dev` (tag `dev`, appears as `Y:` in the guest — sibling repos
+    alongside `oma-eng`, if any).
+
+  Adjust both to your absolute paths, or delete the `dev` block if you
+  only ever want the repo-scoped share. To add or retire shares later,
+  [`scripts/set-guest-share`](../scripts/set-guest-share) edits the XML
+  and hot-attaches / detaches the device.
 - **Evdev keyboard + mouse paths** — the `<qemu:commandline>` block at
   the bottom of the XML has two `evdev=/dev/input/by-id/usb-CHANGEME-…`
   entries. Only USB HID devices have stable `/dev/input/by-id/`
@@ -158,6 +167,25 @@ Verify after the reboot — each of these has bitten fresh installs:
    [https://winfsp.dev](https://winfsp.dev), install it (Typical),
    then Start the service. Drive letter is auto-assigned; look for
    the drive labelled `src` if it isn't `Z:`.
+
+4. **`Y:` drive** should appear alongside `Z:`, pointing at the
+   parent `~/dev/` on the host (so any sibling repo lives at
+   `Y:\<repo>\`). The shipped XML has two `<filesystem>` blocks (tags
+   `src` and `dev`); each tag needs its own Windows service instance
+   because `virtiofs.exe` handles one tag at a time. Install the
+   companion service once, from an **admin** PowerShell in the guest:
+
+   ```powershell
+   sc.exe create VirtioFsSvc-Dev `
+       binPath= "`"C:\Program Files\Virtio-Win\VioFS\virtiofs.exe`" -t dev -m *" `
+       start= auto `
+       DisplayName= "VirtIO-FS Service (dev)"
+   net start VirtioFsSvc-Dev
+   ```
+
+   Adding a third share later is the same pattern — see
+   [scripts/set-guest-share](../scripts/set-guest-share), which
+   prints the matching `sc.exe create` snippet for any new tag.
 
 ## 7. Install the Nvidia driver (in the guest)
 

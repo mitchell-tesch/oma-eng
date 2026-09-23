@@ -36,7 +36,8 @@ it were a native application.
 |                                                                        |                             |
 |   VS Code (Remote-SSH)       <========= virtio-net (NAT) ============> |  OpenSSH + VS Code Server   |
 |                                                                        |                             |
-|   ~/dev/oma-eng/src          <========= virtiofs share =============>  |  Z:\ (same tree in guest)   |
+|   ~/dev/oma-eng/src          <========= virtiofs share (src) ========> |  Z:\  (this repo's src/)    |
+|   ~/dev                      <========= virtiofs share (dev) ========> |  Y:\  (sibling repos too)   |
 |                                                                                                      |
 +------------------------------------------------------------------------------------------------------+
 ```
@@ -148,7 +149,9 @@ You'll know the setup is done when all of these are true:
   lab` launches and a `%%render` cell with Handcalcs produces LaTeX
   output.
 - `Z:\` in the guest lists the same files as `~/dev/oma-eng/src`
-  on the host, and edits from Omarchy appear immediately.
+  on the host, and edits from Omarchy appear immediately. `Y:\` in
+  the guest exposes the whole `~/dev/` tree, so sibling repos are
+  reachable at `Y:\<repo>\` without any second copy.
 - `code --remote ssh-remote+windows-eng` from Omarchy opens a working
   VS Code session in the guest, with C# IntelliSense against
   `RhinoCommon.dll`, `ETABSv1.dll`, `SAP2000v1.dll` (if installed),
