@@ -553,15 +553,87 @@ lives in `scripts/prepare-host.sh` under `--reset-audio-fn`.
 
 ---
 
-## Native Omarchy tooling (Bonsai / Jupyter / handcalcs)
+## Native Omarchy tooling (FreeCAD / Bonsai / Jupyter / handcalcs)
 
 Covers [doc 14](14-native-omarchy-tooling.md). No guest involvement —
 these all run on Omarchy directly.
 
+### FreeCAD BIM workbench: *IfcOpenShell is not installed*
+
+FreeCAD on Arch embeds **system Python 3.14** and only looks in its
+own vendor directory for extra packages. A `uv sync` in
+`src/native-tooling/` does nothing for it — that venv is not on
+FreeCAD's `sys.path`.
+
+Use the workbench's own installer (*BIM ▸ Utils ▸ IfcOpenShell
+Update*), or run the same thing by hand:
+
+```bash
+VENDOR="$HOME/.local/share/FreeCAD/v1-1/AdditionalPythonPackages/py314"
+mkdir -p "$VENDOR"
+python3 -m pip install --upgrade --disable-pip-version-check \
+        --target "$VENDOR" ifcopenshell
+```
+
+Restart FreeCAD, then confirm:
+
+```bash
+FreeCADCmd -c "import ifcopenshell; print(ifcopenshell.version, ifcopenshell.__file__)"
+# 0.8.5 /home/…/AdditionalPythonPackages/py314/ifcopenshell/__init__.py
+```
+
+`--target` bypasses PEP 668, so no `--break-system-packages` is
+needed. If pip itself is missing: `sudo pacman -S --needed python-pip`.
+
+Don't hardcode `v1-1`/`py314` in scripts — ask FreeCAD:
+
+```bash
+FreeCADCmd -c "import addonmanager_utilities as u; print(u.get_pip_target_directory())"
+```
+
+### `'Settings' object has no attribute 'USE_BREP_DATA'`
+
+Raised by FreeCAD's **legacy** IFC importer
+(`Mod/BIM/importers/importIFC.py`), which still uses the
+IfcOpenShell 0.7 geometry-settings API. IfcOpenShell 0.8.x renamed
+those constants.
+
+FreeCAD 1.1 already comments the legacy importer out of
+`Mod/BIM/Init.py` and registers **NativeIFC** as the `.ifc` handler,
+so you only hit this if a macro calls `importers.importIFC`
+directly. Port the call to NativeIFC:
+
+```python
+from nativeifc import ifc_import
+ifc_import.insert("/path/to/model.ifc", doc.Name)
+```
+
+Downgrading `ifcopenshell` to 0.7.x is the wrong fix — it breaks
+NativeIFC, which is the supported path.
+
+### FreeCAD opens an IFC but the 3D view is empty
+
+Two separate causes:
+
+- **NativeIFC is lazy by design.** Only the `IfcProject` node appears
+  at first; FreeCAD builds an element's shape when you expand its
+  tree node. Expand down to the storey, or right-click the project ▸
+  *Expand children*.
+- **The file genuinely has no geometry.**
+  `src/native-tooling/samples/smoke.ifc` is a schema-only fixture —
+  no `IfcShapeRepresentation` entities at all. FreeCAD logs
+  `get_geom_iterator: Invalid iterator` and draws nothing. Check
+  before blaming the install:
+
+  ```bash
+  grep -c IFCSHAPEREPRESENTATION model.ifc   # 0 → nothing to draw
+  ```
+
 ### `pip install --user ifcopenshell` → *externally-managed-environment*
 
 Modern Python enforces PEP 668. Don't `pip install --user` on system
-Python; use `uv` instead.
+Python; use `uv` instead (or, for FreeCAD specifically, the `--target`
+vendor-directory recipe above).
 
 ```bash
 # Project-local (recommended):

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# launch-windows-eng — start the windows-eng libvirt VM if it isn't
+# already running, then launch (or focus, if already open) the Looking
+# Glass client. Meant to be invoked from an Omarchy Apps-menu entry
+# (see ~/.local/share/applications/windows-eng-vm.desktop) or run
+# directly from a terminal.
+
+set -euo pipefail
+
+DOMAIN="windows-eng"
+LG_CONF="$HOME/.config/looking-glass/client.ini"
+
+state="$(virsh --connect qemu:///system domstate "$DOMAIN" 2>/dev/null || echo "not found")"
+
+if [[ "$state" == "not found" ]]; then
+    notify-send "Windows VM" "libvirt domain '$DOMAIN' not found" -u critical 2>/dev/null || true
+    echo "launch-windows-eng: libvirt domain '$DOMAIN' not found" >&2
+    exit 1
+elif [[ "$state" != "running" ]]; then
+    notify-send "Windows VM" "Starting $DOMAIN…" 2>/dev/null || true
+    virsh --connect qemu:///system start "$DOMAIN"
+fi
+
+# LG and a SPICE viewer can't share the display port, and two client
+# instances just fight over the same shmem — focus the existing window
+# instead of spawning a second one.
+if pgrep -x looking-glass-client >/dev/null; then
+    hyprctl dispatch focuswindow "class:^(looking-glass-client)$" >/dev/null 2>&1 || true
+    exit 0
+fi
+
+exec looking-glass-client -c "$LG_CONF"

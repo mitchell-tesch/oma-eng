@@ -5,7 +5,9 @@ categories of work run natively on Omarchy — often better than
 their Windows-guest equivalents because they avoid the VM entirely:
 
 - **BIM viewing and IFC scripting** — open, inspect, extract data
-  from, and even edit IFC files without booting the guest.
+  from, and even edit IFC files without booting the guest. Two
+  viewers are covered: FreeCAD (light, pacman-installable) and
+  Bonsai/Blender (heavier, full IFC authoring).
 - **Engineering calc notebooks** — Mathcad-style calculations with
   rendered maths, driven from a plain-text source that lives in Git.
 
@@ -241,6 +243,157 @@ authoring source-of-truth for internal projects, Bonsai as the
 "look at what the architect sent us" viewer plus the script host
 for QTO and IFC hygiene.
 
+## BIM viewing: FreeCAD + NativeIFC
+
+FreeCAD 1.1's built-in **BIM workbench** opens IFC through
+**NativeIFC** — the model stays an IFC file on disk and FreeCAD
+lazily builds shapes for whatever you expand in the tree. For
+"the architect sent us an IFC, what's in it?" this is lighter
+than Bonsai: no portable Blender, no Python-version juggling,
+and it is a plain `pacman` package.
+
+```bash
+sudo pacman -S --needed freecad          # 1.1.3 at time of writing
+freecad --version
+```
+
+FreeCAD on Arch links against **system Python 3.14**
+(`ldd /usr/lib/freecad/lib/FreeCAD.so | grep python`). That matters
+below — and it is why FreeCAD works where Bonsai doesn't:
+`ifcopenshell` 0.8.4+ publishes `py314` manylinux wheels, whereas
+Bonsai's Blender extension is still pinned to Python 3.13.
+
+### Installing IfcOpenShell for FreeCAD — best practice
+
+FreeCAD ships its own sandboxed vendor directory for extra Python
+packages and puts it on `sys.path` at startup:
+
+```
+~/.local/share/FreeCAD/v1-1/AdditionalPythonPackages/py314
+```
+
+That is the **only** location you should install into. It is
+per-user, per-FreeCAD-version, per-Python-version, and it is what
+the BIM workbench's own updater targets.
+
+**Recommended — let FreeCAD do it (GUI):**
+
+1. Open FreeCAD, switch to the **BIM** workbench.
+2. *Utils ▸ IfcOpenShell Update*.
+3. FreeCAD reports *"No existing IfcOpenShell installation found"*
+   and offers the newest release. Click **OK**.
+4. Restart FreeCAD.
+
+The dialog's own wording — *"the update is installed in your
+FreeCAD's user directory and will not affect the rest of your
+system"* — is exactly the property you want on an Arch box.
+
+**Equivalent from the shell** (same command FreeCAD runs
+internally, useful for scripting a fresh host):
+
+```bash
+VENDOR="$HOME/.local/share/FreeCAD/v1-1/AdditionalPythonPackages/py314"
+mkdir -p "$VENDOR"
+python3 -m pip install --upgrade --disable-pip-version-check \
+        --target "$VENDOR" ifcopenshell
+```
+
+`--target` sidesteps PEP 668, so there is no
+`externally-managed-environment` error and no
+`--break-system-packages` anywhere. Needs `python-pip` installed
+(`sudo pacman -S --needed python-pip`), which FreeCAD's updater
+needs too.
+
+> Derive the `v1-1` / `py314` parts rather than hardcoding them if
+> you are scripting for several machines:
+> `FreeCADCmd` → `import addonmanager_utilities as u;
+> print(u.get_pip_target_directory())`.
+
+### Why not the obvious alternatives
+
+| Approach | Verdict |
+|---|---|
+| `pip install --user ifcopenshell` | Blocked by PEP 668; forcing it with `--break-system-packages` pollutes every Python 3.14 process on the host. |
+| `sudo pip install` into `/usr/lib/python3.14/site-packages` | Pacman-managed directory. A `freecad`/`python` upgrade will fight you. Never do this on Arch. |
+| `yay -S ifcopenshell` (AUR, 0.9.0-alpha) | Multi-hour source build (boost, CGAL, OpenCascade) against system Python, and an alpha. Only worth it if you also want the C++ CLI system-wide. |
+| Reusing `src/native-tooling/.venv` | That venv is built by `uv` against its own interpreter and is not on FreeCAD's `sys.path`. Handy for scripting (below), useless to FreeCAD. |
+| FreeCAD AppImage / Flatpak | Bundles its own Python and its own vendor dir — the pacman build plus the vendor directory is simpler here. |
+
+### Verify
+
+```bash
+FreeCADCmd -c "import ifcopenshell; print(ifcopenshell.version)"
+```
+
+Headless end-to-end — loads an IFC through NativeIFC, expands the
+spatial tree, and confirms real BRep geometry was built:
+
+```bash
+cat > /tmp/fc_ifc_check.py <<'PY'
+import FreeCAD
+from nativeifc import ifc_import, ifc_tools
+doc = FreeCAD.newDocument("check")
+ifc_import.insert("/path/to/model.ifc", doc.Name)
+ifc_tools.create_children(doc.Objects[0], recursive=True)
+doc.recompute()
+for o in doc.Objects:
+    shape = getattr(o, "Shape", None)
+    print(o.Label, "|", getattr(o, "Class", "-"),
+          "| verts:", len(shape.Vertexes) if shape else 0)
+PY
+FreeCADCmd /tmp/fc_ifc_check.py
+# GeomTest  | IfcProject        | verts: 0
+# Site      | IfcSite           | verts: 0
+# Building  | IfcBuilding       | verts: 0
+# Ground    | IfcBuildingStorey | verts: 0
+# C1        | IfcColumn         | verts: 8
+# C2        | IfcColumn         | verts: 8
+```
+
+Interactively, just `freecad model.ifc` — FreeCAD registers
+NativeIFC as the `.ifc` handler, so the import dialog appears and
+the project lands in the tree. Expand a node to make FreeCAD build
+that element's shape on demand.
+
+> `src/native-tooling/samples/smoke.ifc` is a *schema-only* fixture
+> with no `IfcShapeRepresentation` entities — it loads, but FreeCAD
+> logs `get_geom_iterator: Invalid iterator` and draws nothing.
+> That is correct behaviour, not a broken install. Use a real
+> architect-issued IFC to see geometry.
+
+### Do not re-enable the legacy IFC importer
+
+FreeCAD 1.1 still ships the pre-NativeIFC importer at
+`importers/importIFC.py`, but it is **commented out** of
+`Mod/BIM/Init.py` on purpose: it calls the IfcOpenShell **0.7**
+geometry-settings API and dies on 0.8.x with
+
+```
+'Settings' object has no attribute 'USE_BREP_DATA'
+```
+
+Leave `addImportType` alone and stay on NativeIFC. See
+[doc 09](09-troubleshooting.md#settings-object-has-no-attribute-use_brep_data).
+
+### Keeping it current, and undoing it
+
+```bash
+# upgrade later (or use Utils ▸ IfcOpenShell Update again)
+python3 -m pip install --upgrade --target "$VENDOR" ifcopenshell
+
+# full clean removal — nothing outside this tree was touched
+rm -rf "$HOME/.local/share/FreeCAD/v1-1/AdditionalPythonPackages"
+```
+
+### FreeCAD vs Bonsai vs the `ifcopenshell` scripts
+
+| Task | Reach for |
+|---|---|
+| Quick look at an incoming IFC, measure something, check a level | **FreeCAD** — one pacman package, opens fast, lazy geometry |
+| Serious IFC authoring/editing, drawing sheets, QTO UI | **Bonsai** — deeper IFC toolset, but needs the portable Blender 4.5 |
+| Batch extraction, CI checks, anything repeatable | **`ifcopenshell` scripts** in `src/native-tooling/` (below) |
+| FEA on the imported geometry | Export STEP from FreeCAD → Strand7 / ETABS in the guest |
+
 ## Engineering calc notebooks: Jupyter + Handcalcs
 
 Best open-source Mathcad alternative for structural hand-calcs.
@@ -405,6 +558,11 @@ SciPy / SymPy / matplotlib are all in `src/native-tooling/`'s
 
 ## Exit criteria
 
+- `FreeCADCmd -c "import ifcopenshell; print(ifcopenshell.version)"`
+  prints `0.8.5` or newer, resolved from
+  `~/.local/share/FreeCAD/v1-1/AdditionalPythonPackages/py314/`.
+- `freecad some-model.ifc` opens the project in the tree and
+  expanding an element builds its shape.
 - `blender-bim --version` prints *Blender 4.5.4 LTS*.
 - The Bonsai add-on loads: opening
   `src/native-tooling/samples/smoke.ifc` in `blender-bim` shows the

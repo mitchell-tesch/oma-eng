@@ -5,7 +5,7 @@
 (with Rhino.Inside.Revit + pyRevit), **Bluebeam Revu**, and **Microsoft
 Office** on **Omarchy** (Arch Linux + Hyprland) with full GPU
 acceleration and a working API-development workflow — plus a set of
-open-source tools (**Bonsai / BlenderBIM**, **Jupyter + Handcalcs**)
+open-source tools (**FreeCAD**, **Bonsai / BlenderBIM**, **Jupyter + Handcalcs**)
 that run natively on Omarchy when you don't need the guest.
 
 None of the Windows-native applications above ship a native Linux
@@ -110,7 +110,7 @@ before the next one begins.
 11. [CSi ETABS + SAP2000 + SpaceGass](docs/11-etabs-and-spacegass.md) — additional structural packages, licence dongles, APIs
 12. [Revit + Rhino.Inside.Revit + pyRevit](docs/12-revit-and-rhino-inside.md) — BIM authoring and its plugin ecosystem
 13. [Bluebeam Revu + collaboration workflows](docs/13-collaboration-and-backup.md) — drawing markup, cloud storage, VPN, corporate licence servers, backup
-14. [Native Omarchy tooling](docs/14-native-omarchy-tooling.md) — open-source (Bonsai/BlenderBIM + Jupyter/Handcalcs) for the work that doesn't need the guest
+14. [Native Omarchy tooling](docs/14-native-omarchy-tooling.md) — open-source (FreeCAD + Bonsai/BlenderBIM + Jupyter/Handcalcs) for the work that doesn't need the guest
 
 ## Repo layout
 

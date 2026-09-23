@@ -254,19 +254,41 @@ Key values already set in the template:
   convenient key) in the template if your keyboard has no Scroll Lock.
 - `[egl] vsync = no` — CAD benefits from tearing-free but low-latency.
 
-## 6. Autostart in Hyprland (optional)
+## 6. Launching — Apps-menu entry (recommended over autostart)
 
-Add to your Hyprland config (`~/.config/hypr/hyprland.conf`):
+[`scripts/launch-windows-eng`](../scripts/launch-windows-eng) starts the
+`windows-eng` domain if it isn't already running, then launches
+`looking-glass-client` — or, if a client window is already open, just
+focuses it instead of spawning a second instance.
 
-```
-# Start Looking Glass when the CAD VM comes up
-exec-once = looking-glass-client -c ~/.config/looking-glass/client.ini
-```
-
-Or leave it out and start it manually with:
+Wire it into Omarchy's Apps menu (`SUPER + ALT + SPACE`) with a
+`.desktop` entry:
 
 ```bash
-looking-glass-client
+cat > ~/.local/share/applications/windows-eng-vm.desktop <<'EOF'
+[Desktop Entry]
+Version=1.0
+Name=Windows Eng VM
+Comment=Start the windows-eng CAD VM and open Looking Glass
+Exec=/home/mzt/dev/oma-eng/scripts/launch-windows-eng
+Icon=virt-manager
+Terminal=false
+Type=Application
+Categories=System;Virtualization;
+StartupNotify=true
+EOF
+```
+
+Search "Windows Eng VM" in the Apps menu any time you want to bring the
+VM + LG up — after a host restart, after closing the client, or to
+refocus it. No boot-time `exec-once` needed, and no risk of LG racing
+the guest before it's ready (the script blocks on `virsh start` first).
+
+You can still run the pieces manually if you prefer:
+
+```bash
+virsh --connect qemu:///system start windows-eng
+looking-glass-client -c ~/.config/looking-glass/client.ini
 ```
 
 ## 7. Hyprland window rules
@@ -431,9 +453,11 @@ paths.
 ## 9. First run
 
 ```bash
-virsh --connect qemu:///system start windows-eng
-looking-glass-client
+scripts/launch-windows-eng
 ```
+
+(or use the "Windows Eng VM" Apps-menu entry from §6, or the manual
+two-command form it wraps.)
 
 You should see the Windows desktop within ~10 seconds. If it stays black,
 see [09 — Troubleshooting](09-troubleshooting.md) *Looking Glass shows
