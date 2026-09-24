@@ -127,7 +127,7 @@ Packages* entry (label wording depends on Rhino 8 version).
   anywhere; but debug requires Rhino running in the guest):
 
   ```powershell
-  cd Z:\rhino-plugin
+  cd Z:\oma-eng\src\rhino-plugin
   dotnet build -c Debug
   ```
 
@@ -138,7 +138,7 @@ Packages* entry (label wording depends on Rhino 8 version).
   - `_-LoadPlugIn "bin\Debug\net7.0-windows\HelloRhino.rhp"` at the
     Rhino command line (the leading dash suppresses the file-picker).
 - For Grasshopper, drop the `.gha` into
-  `%APPDATA%\Grasshopper\Libraries\` (or use a junction to `Z:\...\bin`).
+  `%APPDATA%\Grasshopper\Libraries\` (or use a junction to `Z:\oma-eng\src\...\bin`).
 
 ### If you're on Rhino 9
 
@@ -232,8 +232,8 @@ needs the Rhino runtime.
 - Cycles renders a test scene on GPU (OptiX) in the guest.
 - `HelloRhinoCommand` from [`src/rhino-plugin/`](../src/rhino-plugin/)
   loads and prints "Hello from Rhino on Omarchy!" in the command line.
-- Grasshopper opens and saves `.gh` files from `Z:\` without autosave
-  errors.
+- Grasshopper opens and saves `.gh` files from `Z:\oma-eng\src\`
+  without autosave errors.
 - VS Code Remote debug attaches to `Rhino.exe`.
 
 Continue to [07 — Strand7 R3 setup](07-strand7-setup.md).

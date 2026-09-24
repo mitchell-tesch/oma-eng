@@ -13,9 +13,8 @@ page ties the pieces together.
         │   Edit files under ~/dev/oma-eng/src/            (this repo)
         │   Edit files under ~/dev/<sibling-repo>/         (any other repo)
         ▼
-  virtiofs shares ────────────────────────► Z:\  in the guest  (this repo's src/)
-                                            Y:\  in the guest  (whole ~/dev/ tree)
-        ▲                                     │
+  virtiofs share ─────────────────────────► Z:\  in the guest  (whole ~/dev/ tree)
+        ▲                                     │   this repo = Z:\oma-eng\src\
         │                                     │  Build / debug
         │                                     ▼
   Remote-SSH  ◄─────────────  OpenSSH server  Rhino.exe / Strand7.exe
@@ -29,19 +28,24 @@ page ties the pieces together.
   COM) only exist on Windows.
 - **Debug** in VS Code Remote-SSH — one keystroke round trip.
 
-Two virtiofs shares ship with `configs/libvirt/windows-eng.xml`:
+One virtiofs share ships with `configs/libvirt/windows-eng.xml`:
 
-- **`Z:`** ↔ `~/dev/oma-eng/src/` (this repo's source tree). All the
-  sample project paths in this doc use `Z:\`.
-- **`Y:`** ↔ `~/dev/` (the parent — every repo you clone alongside
-  `oma-eng`). Use `Y:\<repo>\` when working on sibling projects that
-  aren't part of oma-eng itself.
+- **`Z:`** ↔ `~/dev/` — the whole parent tree. This repo's source is
+  `Z:\oma-eng\src\`, which is what every sample path in this doc uses;
+  any repo you clone alongside `oma-eng` is `Z:\<repo>\`.
+
+It used to be two shares (`Z:` ↔ `src/`, `Y:` ↔ `~/dev/`). That was
+reverted because each tag needs its own Windows service, the services
+both default to `-m *` (first free letter counting down from `Z:`),
+and whichever one won the startup race got `Z:` — so the letters
+swapped between boots. One share, one service, one pinned letter.
 
 To add more shares later, use
 [`scripts/set-guest-share`](../scripts/set-guest-share) — it edits
 the XML, hot-attaches the device to the live guest, and prints the
-`sc.exe create` snippet for the paired Windows service. See doc 03
-§6 for the initial `Y:` service install.
+`sc.exe create` snippet for the paired Windows service. Always pass
+`--letter` so the new service claims a fixed letter. See doc 03
+§6 for the `Z:` service config.
 
 ## Directory layout under `src/`
 
@@ -92,50 +96,76 @@ src/
 
 VS Code on Omarchy → *Remote Explorer* → *SSH* → `windows-eng` →
 *Connect in New Window*. In the new (green) window: *File ▸ Open
-Folder* → paste `Z:\` (or a specific project folder such as
-`Z:\rhino-plugin` or `Z:\strand7-api\csharp\HelloStrand7`).
+Folder* → paste `Z:\oma-eng\src\` (or a specific project folder such
+as `Z:\oma-eng\src\rhino-plugin` or
+`Z:\oma-eng\src\strand7-api\csharp\HelloStrand7`).
 
-`Z:\` in the guest is the same inode as `~/dev/oma-eng/src/` on the
-host, via virtiofs. Edit either place, the other sees it immediately
-— not sync, the same file.
+`Z:\oma-eng\src\` in the guest is the same inode as
+`~/dev/oma-eng/src/` on the host, via virtiofs. Edit either place, the
+other sees it immediately — not sync, the same file.
 
-**SSH-session `Z:` caveat** — VirtIO-FS Service mounts `Z:` per
-interactive user session. Plain `ssh windows-eng` opens a
-non-interactive session that doesn't inherit that mapping, so
-`dir Z:\` errors with *"The system cannot find the path specified."*
-Workarounds:
+### Two Windows sessions: SSH vs Looking Glass
 
-- **VS Code Remote-SSH** does inherit `Z:` (it starts a full
-  interactive session for the remote server), so building and
-  running via VS Code works.
-- **Plain SSH**: run the command through PowerShell's user-session
-  helper, e.g. `ssh windows-eng "powershell -Command 'net use Z: /persistent:no & cd Z:\\ & dotnet build'"`
-  — or add a persistent `net use` in a Task Scheduler *At log on*
-  task that runs at boot with the SYSTEM account.
+There are genuinely two sessions inside the guest, and this is normal
+Windows behaviour, not a misconfiguration. `query session` shows:
 
-Both `uv sync` and `dotnet build` in the samples below assume you
-launched them from an interactive session (Remote-SSH or a Looking
-Glass PowerShell) rather than plain `ssh windows-eng`.
+| ID | Name | Who | Desktop? |
+|---|---|---|---|
+| 0 | `services` | `LocalSystem` — `sshd`, `VirtioFsSvc`, the Looking Glass host service | No (Session 0 Isolation, since Vista) |
+| 1 | `console` | your interactive logon as `eng` | Yes — this is what Looking Glass and SPICE display |
+
+- **Plain `ssh windows-eng` lands in session 0.** It authenticates as
+  `eng`, but `[Environment]::UserInteractive` is `False` and
+  `(Get-Process -Id $PID).SessionId` is `0`. There is no desktop
+  attached.
+- **VS Code Remote-SSH also runs in session 0** — its server is just
+  another process under `sshd`.
+- **Looking Glass shows session 1.** The `Looking Glass (host)` service
+  runs in session 0 and launches a second `looking-glass-host` process
+  *into* session 1 to do the actual capture, which is why you see two
+  of them in `Get-Process`.
+
+What this means in practice:
+
+- **Filesystem work is fine over plain SSH.** `virtiofs.exe` runs as
+  LocalSystem and WinFsp publishes the mount into the *global*
+  DosDevices namespace, so `Z:` resolves from every session. `dir Z:\`
+  and `dotnet build` under `Z:\oma-eng\src\` work over plain `ssh`.
+- **Anything that needs the desktop must run in session 1** — i.e.
+  from a PowerShell you opened *inside* the Looking Glass window:
+  - launching or driving a GUI app (Rhino, Strand7, ETABS, Excel);
+  - COM automation that attaches to an already-running instance
+    (`xlwings`, the Rhino/Strand7 OAPI samples) — a COM server started
+    from session 0 gets its own invisible instance and cannot see the
+    one on your desktop;
+  - display and monitor settings (see doc 04 §7 for the VDD
+    resolution fix, which has to be done from SPICE or Looking Glass).
+
+> **Historical note.** Earlier revisions of this doc claimed `Z:` was
+> mapped per interactive session and therefore invisible over plain
+> SSH, with a `net use` workaround. That was wrong — the real split is
+> desktop access, not drive letters. If `Z:` is genuinely missing over
+> SSH, the VirtIO-FS service is not running; see doc 03 §6.
 
 ### Building
 
 ```powershell
 # In the guest, via SSH or Remote-SSH terminal
-cd Z:\rhino-plugin
+cd Z:\oma-eng\src\rhino-plugin
 dotnet build -c Debug
 ```
 
 For Grasshopper components:
 
 ```powershell
-cd Z:\grasshopper-component
+cd Z:\oma-eng\src\grasshopper-component
 dotnet build -c Debug
 ```
 
 For the Strand7 C# sample:
 
 ```powershell
-cd Z:\strand7-api\csharp\HelloStrand7
+cd Z:\oma-eng\src\strand7-api\csharp\HelloStrand7
 dotnet build -c Release
 ```
 
@@ -184,11 +214,11 @@ own `.vscode/launch.json` with the right mode:
   `pywin32`.
 
 > **Python + virtiofs caveat.** Setting breakpoints in a `.py` file
-> under `Z:\` fails with `OSError: [WinError 1005]` — `debugpy` calls
+> under `Z:\oma-eng\src\` fails with `OSError: [WinError 1005]` — `debugpy` calls
 > `os.path.realpath()` and WinFsp doesn't implement the underlying
 > Win32 volume-info FSCTL. For breakpoint-driven Python debug, mirror
 > the folder to a local NTFS path in the guest first:
-> `robocopy Z:\<project> C:\dev\<project> /MIR`, then open the C:\
+> `robocopy Z:\oma-eng\src\<project> C:\dev\<project> /MIR`, then open the C:\
 > copy in Remote-SSH. C# / `coreclr` is unaffected. Full detail in
 > [doc 09 § Python debugger fails with `[WinError 1005]`](09-troubleshooting.md).
 
@@ -238,9 +268,9 @@ or any UI at all, you need the VM with GPU + LG.
   triggering it from a Grasshopper canvas in the guest hits the
   breakpoint in Omarchy's VS Code.
 - `hello_strand7.py` runs to completion via
-  `py Z:\strand7-api\python\hello_strand7.py` in a guest PowerShell;
+  `py Z:\oma-eng\src\strand7-api\python\hello_strand7.py` in a guest PowerShell;
   editing a value on Omarchy and re-running reflects the change
   immediately. (For breakpoint-driven Python debug the file must live
-  on local NTFS, not `Z:\` — see Debugging above.)
+  on local NTFS, not `Z:\oma-eng\src\` — see Debugging above.)
 
 Continue to [09 — Troubleshooting](09-troubleshooting.md).

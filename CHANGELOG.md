@@ -29,17 +29,14 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   across `windows-eng.xml`, `99-vm-hugepages.conf`, and
   `hugepages.service`; prints the `/boot/limine.conf` snippet to
   edit by hand.
-- Second virtiofs share `dev` in `configs/libvirt/windows-eng.xml`
-  exposing `~/dev/` at `Y:\` in the guest, so sibling repos next
-  to `oma-eng` are reachable without a second copy. The existing
-  `src` share (`Z:\` ↔ `~/dev/oma-eng/src/`) is unchanged so every
-  path reference in docs 06–14 keeps working.
 - `scripts/set-guest-share` helper — lists / adds / removes
   `<filesystem>` blocks in `windows-eng.xml`, hot-attaches (or
   detaches) the PCI device on the running guest via `virsh
   attach-device --live --config`, and prints the paired guest-side
   `sc.exe create VirtioFsSvc-<tag>` snippet needed because
-  `virtiofs.exe` handles one tag per service instance.
+  `virtiofs.exe` handles one tag per service instance. `--letter`
+  pins the guest drive letter (`-m Z:`) instead of leaving the
+  service to race for one (`-m *`).
 - GitHub issue templates (`.github/ISSUE_TEMPLATE/`).
 - CI now runs `dotnet restore` on `HelloSpaceGass.csproj` and
   `pip install --dry-run` on every `requirements.txt` alongside the
@@ -47,6 +44,23 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Virtiofs consolidated to a single share.** `configs/libvirt/windows-eng.xml`
+  now ships one `<filesystem>` block: `~/dev` (tag `dev`) at `Z:\` in
+  the guest. The briefly-shipped two-share layout (`src` at `Z:\`,
+  `dev` at `Y:\`) needed one Windows service per tag, both services
+  defaulted to `-m *` (first free letter counting down from `Z:`), and
+  whichever won the startup race took `Z:` — so the two letters could
+  swap between boots. Consequences:
+  - This repo's source tree is now `Z:\oma-eng\src\`, not `Z:\`.
+    Every path reference in docs 03–13, the READMEs, `.gitignore`, and
+    `HelloETABS/Program.cs` rewritten accordingly. Sibling repos are
+    `Z:\<repo>\`.
+  - The guest's *VirtIO-FS Service* must be pinned with
+    `-t dev -m Z:` (doc 03 §6); the `VirtioFsSvc-Dev` companion
+    service is deleted.
+  - Removes an incidental hazard: the old layout exported the same
+    subtree through two independent `virtiofsd` processes, both with
+    `cache mode='always'`.
 - **Repository renamed** from `rhino-omarchy` to `oma-eng`
   (Omarchy for engineering). All README / doc / csproj metadata /
   AssemblyInfo GitHub URLs / virtiofs paths updated.
@@ -93,6 +107,17 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Corrected the SSH-vs-Looking-Glass session story in docs 04, 08,
+  and 09.** The old claim — that VirtIO-FS maps `Z:` per interactive
+  session, so plain `ssh windows-eng` can't see it and needs a `net
+  use` workaround — is wrong. `virtiofs.exe` runs as LocalSystem and
+  publishes the mount into the global DosDevices namespace, so `Z:`
+  resolves from every session. The real split is **Windows session 0
+  vs the console session**: `sshd` (and therefore VS Code Remote-SSH)
+  runs in session 0, which has no desktop, while Looking Glass shows
+  session 1. Filesystem and build work is fine over plain SSH; only
+  desktop-bound work (GUI apps, COM against a running instance,
+  display settings) needs a Looking Glass PowerShell.
 - Broken Omarchy manual link in doc 10
   (`learn.omacom.io/2/the-omarchy-manual/28-windows-vm` → 
   `omarchy.org/manual/windows-vm`).

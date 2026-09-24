@@ -1,8 +1,9 @@
 # src/ — API sample projects
 
-This directory is bind-mounted into the Windows guest as **`Z:\`** via
-virtiofs (see `<filesystem>` block in
-[../configs/libvirt/windows-eng.xml](../configs/libvirt/windows-eng.xml)).
+This directory is reachable from the Windows guest at
+**`Z:\oma-eng\src\`** via virtiofs — the share is rooted at `~/dev`, so
+sibling repos show up at `Z:\<repo>\` too (see the `<filesystem>` block
+in [../configs/libvirt/windows-eng.xml](../configs/libvirt/windows-eng.xml)).
 Edit any of these files from Omarchy — the guest sees the change
 instantly. Build and run in the guest.
 
@@ -29,44 +30,44 @@ Open a PowerShell in the guest (or an SSH session from Omarchy):
 
 ```powershell
 # Rhino plugin
-cd Z:\rhino-plugin
+cd Z:\oma-eng\src\rhino-plugin
 dotnet build -c Debug
 # Then in Rhino: drag-and-drop the .rhp onto Rhino, or
 #   _-LoadPlugIn "bin\Debug\net7.0-windows\HelloRhino.rhp"
 # Type: _HelloRhino
 
 # Grasshopper component
-cd Z:\grasshopper-component
+cd Z:\oma-eng\src\grasshopper-component
 dotnet build -c Debug
 Copy-Item bin\Debug\net7.0-windows\HelloGh.gha $env:APPDATA\Grasshopper\Libraries\
 
 # Strand7 Python
-cd Z:\strand7-api\python
+cd Z:\oma-eng\src\strand7-api\python
 py hello_strand7.py
 
 # Strand7 C#
-cd Z:\strand7-api\csharp\HelloStrand7
+cd Z:\oma-eng\src\strand7-api\csharp\HelloStrand7
 dotnet run -c Release
 
 # Strand7 -> Excel (Python + xlwings, managed with uv)
-cd Z:\office-integration\python
+cd Z:\oma-eng\src\office-integration\python
 uv sync
 uv run strand7_to_excel.py
 
 # Rhino -> Excel (C# Rhino command via late-bound COM)
-cd Z:\office-integration\csharp\RhinoToExcel
+cd Z:\oma-eng\src\office-integration\csharp\RhinoToExcel
 dotnet build -c Debug
 # Then in Rhino: drag-and-drop the .rhp onto Rhino, or
 #   _-LoadPlugIn "bin\Debug\net7.0-windows\RhinoToExcel.rhp"
 # Type: _RhinoToExcel  (nothing selected = whole document; or select first)
 
 # ETABS 22 OAPI (C# console)
-cd Z:\etabs-api\csharp\HelloETABS
+cd Z:\oma-eng\src\etabs-api\csharp\HelloETABS
 dotnet run -c Release
 
 # SPACE GASS 14.5+ REST API — quick start (Python via uv)
 # First: start SpaceGassApi.exe in the guest.
-cd Z:\spacegass-api\python
+cd Z:\oma-eng\src\spacegass-api\python
 uv sync
 uv run hello_spacegass.py
 
@@ -74,7 +75,7 @@ uv run hello_spacegass.py
 uv run hello_spacegass_analysis.py
 
 # SPACE GASS 14.5+ REST API — C# equivalent
-cd Z:\spacegass-api\csharp\HelloSpaceGass
+cd Z:\oma-eng\src\spacegass-api\csharp\HelloSpaceGass
 dotnet run
 ```
 

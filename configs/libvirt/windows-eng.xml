@@ -294,28 +294,22 @@
 
     <!-- Virtiofs shares — one <filesystem> block per host directory to
          expose to the guest. Each block's <target dir='TAG'/> is the
-         mount tag the Windows VirtIO-FS Service uses to auto-assign a
-         drive letter; the Windows service picks letters in reverse
-         (Z:, Y:, X:, ...) so the top-listed share is usually Z:.
+         mount tag a Windows VirtIO-FS Service instance binds to.
+
+         ONE SHARE ON PURPOSE. The Windows service auto-assigns drive
+         letters in reverse (Z:, Y:, X:, ...) on a first-come basis, so
+         two shares meant two services racing for Z: and the letters
+         could swap between boots. A single share rooted at the whole
+         ~/dev tree covers every repo, and the paired Windows service
+         pins the letter explicitly with `-m Z:` (see docs/03 section 6).
 
          Use scripts/set-guest-share to inspect and edit these blocks
          (add HOST-PATH TAG / remove TAG); see the script header for
-         details. -->
+         details. Always pass a letter so nothing races again. -->
 
-    <!-- Primary share: this repo's src/ tree at Z:\ in the guest -->
-    <!-- EDIT: source dir absolute path -->
-    <filesystem type='mount' accessmode='passthrough'>
-      <driver type='virtiofs' queue='1024'/>
-      <binary path='/usr/lib/virtiofsd'>
-        <cache mode='always'/>
-      </binary>
-      <source dir='/home/mzt/dev/oma-eng/src'/>
-      <target dir='src'/>
-    </filesystem>
-
-    <!-- Secondary share: whole ~/dev/ tree at Y:\ in the guest, so
-         sibling repos alongside oma-eng are reachable too. Remove
-         this block (or use set-guest-share remove-dev) to skip. -->
+    <!-- Share: whole ~/dev/ tree at Z:\ in the guest. This repo's
+         source tree is therefore Z:\oma-eng\src\ and sibling repos
+         are Z:\<repo>\. -->
     <!-- EDIT: source dir absolute path -->
     <filesystem type='mount' accessmode='passthrough'>
       <driver type='virtiofs' queue='1024'/>

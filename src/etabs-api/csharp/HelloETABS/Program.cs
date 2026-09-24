@@ -54,7 +54,7 @@
 // Prereq: ETABS 22 or 23 installed and licensed in the guest.
 //
 // Run:
-//   cd Z:\etabs-api\csharp\HelloETABS
+//   cd Z:\oma-eng\src\etabs-api\csharp\HelloETABS
 //   dotnet run -c Release
 //
 // The ETABS window opens (Visible = true), builds and analyses the

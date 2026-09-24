@@ -31,7 +31,7 @@ Same VFIO guest as the rest of the stack. Reasons:
 
 1. Download the Revu installer from the Bluebeam licensed-users
    portal to the Omarchy host, drop into
-   `~/dev/oma-eng/src/vendor/`, and run from `Z:\vendor\` in the
+   `~/dev/oma-eng/src/vendor/`, and run from `Z:\oma-eng\src\vendor\` in the
    guest.
 2. Install with defaults.
 3. First launch prompts for a licence key or Bluebeam ID sign-in.
@@ -73,7 +73,7 @@ Because Actions run inside Revu (not from a shell), there's no
 edit-on-Omarchy debugger story here — but you can keep your Action
 `.rmv` scripts and Batch definition files in
 `~/dev/oma-eng/src/bluebeam-actions/` on Omarchy and import them
-into Revu from `Z:\bluebeam-actions\`.
+into Revu from `Z:\oma-eng\src\bluebeam-actions\`.
 
 ## Cloud storage
 
@@ -96,7 +96,8 @@ Where you run the sync client matters:
   gives Revit's Cloud Model, Autodesk Docs, and Windows Explorer
   coherent state.
 - **Source code and scripts** — keep on **Omarchy** under
-  `~/dev/oma-eng/src/`. virtiofs exposes them to the guest as `Z:\`
+  `~/dev/oma-eng/src/`. virtiofs exposes the whole `~/dev` tree to the
+  guest as `Z:\`, so this repo is `Z:\oma-eng\src\`
   (see [doc 08](08-api-development.md)). Do all `git` work on
   Omarchy.
 - **Received drawings and RFIs** — download to `~/oma-eng-inbox/`

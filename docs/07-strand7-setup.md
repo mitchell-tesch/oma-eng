@@ -99,7 +99,7 @@ repo default to that path — set the `STRAND7_DIR` environment
 variable to override.
 
 If your Strand7 installer is on the Omarchy host, drop it into
-`~/dev/oma-eng/src/vendor/` and it appears at `Z:\vendor\` in the
+`~/dev/oma-eng/src/vendor/` and it appears at `Z:\oma-eng\src\vendor\` in the
 guest. Run it from there.
 
 On first launch of Strand7 R3, the licence dialog offers the four
@@ -111,7 +111,7 @@ reverts, and API calls.
 
 Launch Strand7, `File ▸ Open` a model (either a shipped sample from the
 Strand7 install's `Samples\` folder, or drop one of your own into
-`~/dev/oma-eng/src/vendor/` on the host — it appears at `Z:\vendor\` in
+`~/dev/oma-eng/src/vendor/` on the host — it appears at `Z:\oma-eng\src\vendor\` in
 the guest). Rotate/tumble the model — motion should be smooth at
 monitor refresh with no visible tears.
 
@@ -192,7 +192,7 @@ linear-static solver (which will stop cleanly on an empty model — that's
 fine for a smoke test), closes the file, and releases. From the guest:
 
 ```powershell
-py Z:\strand7-api\python\hello_strand7.py
+py Z:\oma-eng\src\strand7-api\python\hello_strand7.py
 ```
 
 Standard-library only — `ctypes` ships with Python, no `pip install`
@@ -209,7 +209,7 @@ Straight P/Invoke against the DLL — no interop assembly to generate.
 Build and run:
 
 ```powershell
-cd Z:\strand7-api\csharp\HelloStrand7
+cd Z:\oma-eng\src\strand7-api\csharp\HelloStrand7
 dotnet build -c Release
 dotnet run -c Release
 ```
@@ -225,8 +225,8 @@ VS Code Remote-SSH into the guest, then F5. Each sample ships its own
 1. In VS Code on Omarchy → *Remote Explorer* → *SSH* → `windows-eng` →
    *Connect in New Window*.
 2. In the new (green) window: *File ▸ Open Folder* → paste
-   `Z:\strand7-api\csharp\HelloStrand7` (or `Z:\strand7-api\python`
-   for the Python sample).
+   `Z:\oma-eng\src\strand7-api\csharp\HelloStrand7` (or
+   `Z:\oma-eng\src\strand7-api\python` for the Python sample).
 3. VS Code prompts to install the recommended extensions from the
    shipped `.vscode/extensions.json` on the remote server. Accept once.
 4. Set breakpoints in the source; press F5.
@@ -236,23 +236,23 @@ VS Code Remote-SSH into the guest, then F5. Each sample ships its own
 ships a `Python: hello_strand7` config. First run in a fresh guest
 prompts VS Code to install `debugpy` into the selected Python — say yes.
 
-> **Caveat — debug from a local NTFS copy, not `Z:\`.** Setting
-> breakpoints in a Python file that lives on `Z:\` fails with
+> **Caveat — debug from a local NTFS copy, not `Z:\oma-eng\src\`.** Setting
+> breakpoints in a Python file that lives on `Z:\oma-eng\src\` fails with
 > `[WinError 1005] The volume does not contain a recognized file
 > system`. `debugpy` canonicalises every breakpoint path through
 > `os.path.realpath()` → `_getfinalpathname()`, and WinFsp (the driver
 > that surfaces virtiofs to Windows) doesn't implement the volume-info
 > FSCTL that Win32 call needs. C# / `coreclr` doesn't take this path,
-> which is why the C# sample debugs fine from `Z:\`. Fix — mirror the
+> which is why the C# sample debugs fine from `Z:\oma-eng\src\`. Fix — mirror the
 > Python folder to a local NTFS path in the guest before debugging:
 >
 > ```powershell
-> robocopy Z:\strand7-api\python C:\dev\strand7-api\python /MIR
+> robocopy Z:\oma-eng\src\strand7-api\python C:\dev\strand7-api\python /MIR
 > ```
 >
 > Open `C:\dev\strand7-api\python` in VS Code Remote-SSH, F5 there.
 > Re-run the `robocopy` to freshen from Omarchy. For a *smoke-test* run
-> (no breakpoints), `py Z:\strand7-api\python\hello_strand7.py` from
+> (no breakpoints), `py Z:\oma-eng\src\strand7-api\python\hello_strand7.py` from
 > §6 keeps working — the caveat is debug-only. See
 > [doc 09 § Python debugger fails with `[WinError 1005]`](09-troubleshooting.md).
 

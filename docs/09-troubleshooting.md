@@ -326,18 +326,78 @@ Driver" above.
 
 ---
 
+## Guest sessions and virtiofs drive letters
+
+### Drive letters swap between boots (`Y:` and `Z:` trade places)
+
+Symptom — `Z:` sometimes points at `~/dev/oma-eng/src` and sometimes at
+`~/dev`, with `Y:` taking the other one. Doc paths that hardcode `Z:\`
+break at random.
+
+Cause — `virtiofs.exe` serves exactly one tag per service instance, so
+two virtiofs shares meant two Windows services. Both were installed
+with `-m *`, which takes the first free letter counting down from `Z:`,
+so whichever service won the startup race got `Z:`.
+
+Fix — this repo now ships a **single** share (`~/dev` at `Z:`, tag
+`dev`), and the service is pinned rather than left to `-m *`. From an
+admin PowerShell in the guest:
+
+```powershell
+# remove any leftover companion service from the old two-share layout
+net stop VirtioFsSvc-Dev; sc.exe delete VirtioFsSvc-Dev
+
+sc.exe config VirtioFsSvc `
+    binPath= "`"C:\Program Files\Virtio-Win\VioFS\virtiofs.exe`" -t dev -m Z:"
+Restart-Service VirtioFsSvc
+```
+
+`sc.exe config` is fussy about quoting when driven through a
+non-interactive `ssh`. If it just prints its usage text, set the value
+directly instead:
+
+```powershell
+Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\VirtioFsSvc' `
+    -Name ImagePath `
+    -Value '"C:\Program Files\Virtio-Win\VioFS\virtiofs.exe" -t dev -m Z:'
+```
+
+If you add a second share later, give it its own letter with
+`scripts/set-guest-share --add PATH TAG --letter Y`.
+
+### `ssh windows-eng` can't drive Excel / Rhino / display settings
+
+Not a bug. Plain SSH lands in **Windows session 0** (the services
+session, no desktop); Looking Glass and SPICE show **session 1** (the
+`console` desktop logged on as `eng`). Confirm with `query session`, or
+from the SSH shell:
+
+```powershell
+(Get-Process -Id $PID).SessionId      # 0 over ssh
+[Environment]::UserInteractive        # False over ssh
+```
+
+Filesystem work — `dir Z:\`, `dotnet build`, `git` — is fine over plain
+SSH, because `virtiofs.exe` runs as LocalSystem and publishes `Z:` into
+the global DosDevices namespace. Anything that needs the desktop (GUI
+apps, COM attaching to a running Excel/Rhino instance, display
+settings) must be run from a PowerShell opened inside the Looking Glass
+window. See doc 08 for the full table.
+
+---
+
 ## Python
 
-### Debugger fails with `[WinError 1005]` on `Z:\`
+### Debugger fails with `[WinError 1005]` on `Z:\oma-eng\src\`
 
-Symptom — F5 on a Python file under `Z:\` (VS Code Remote-SSH into the
-guest) prints many copies of:
+Symptom — F5 on a Python file under `Z:\oma-eng\src\` (VS Code Remote-SSH
+into the guest) prints many copies of:
 
 ```
-Error adding watch dir: Z:\...
+Error adding watch dir: Z:\oma-eng\src\...
 OSError: [WinError 1005] The volume does not contain a recognized file
 system. Please make sure that all required file system drivers are
-loaded and that the volume is not corrupted: 'Z:\\...'
+loaded and that the volume is not corrupted: 'Z:\\oma-eng\\src\\...'
 ```
 
 and no breakpoints bind, though the script itself runs to completion.
@@ -350,24 +410,24 @@ implement the volume-info FSCTLs that Win32 call needs, so it returns
 error 1005. Nothing in the Python or `debugpy` config knobs bypasses
 this.
 
-Not a Strand7 issue — this affects any `.py` file under `Z:\` on this
-setup. C# / `coreclr` debugger uses raw paths and is unaffected. And
-plain `py Z:\...\script.py` from PowerShell (no debugger) also works
-because the script code doesn't itself call `realpath` on its own
-directory.
+Not a Strand7 issue — this affects any `.py` file on the `Z:` share on
+this setup. C# / `coreclr` debugger uses raw paths and is unaffected.
+And plain `py Z:\oma-eng\src\...\script.py` from PowerShell (no
+debugger) also works because the script code doesn't itself call
+`realpath` on its own directory.
 
 Fix — mirror the folder to a local NTFS path in the guest and debug
 from there:
 
 ```powershell
-robocopy Z:\<project> C:\dev\<project> /MIR
+robocopy Z:\oma-eng\src\<project> C:\dev\<project> /MIR
 ```
 
 Open `C:\dev\<project>` in VS Code Remote-SSH and F5. Re-run the
 `robocopy` any time the Omarchy-side source changes. For Python
 projects driven by `uv` (`office-integration`, `spacegass-api`), also
 run `uv sync` in the local copy — the `.venv` shouldn't be mirrored
-from `Z:\`.
+from `Z:\oma-eng\src\`.
 
 ---
 

@@ -151,7 +151,7 @@ session):
 
 ```powershell
 # Mirror the project to local NTFS so uv's .venv/ stays off virtiofs.
-robocopy Z:\office-integration\python C:\dev\office-integration\python /MIR
+robocopy Z:\oma-eng\src\office-integration\python C:\dev\office-integration\python /MIR
 cd C:\dev\office-integration\python
 uv sync
 uv run hello_excel.py

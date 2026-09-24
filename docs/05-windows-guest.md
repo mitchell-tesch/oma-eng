@@ -251,7 +251,7 @@ virsh --connect qemu:///system snapshot-create-as windows-eng tuned \
 - `nvidia-smi` reports the dGPU and correct driver.
 - Device Manager is warning-free.
 - `ssh windows-eng hostname` returns the guest name from Omarchy.
-- VS Code Remote-SSH successfully opens `Z:\src` in the guest.
+- VS Code Remote-SSH successfully opens `Z:\oma-eng\src\` in the guest.
 - `dotnet --version` prints an 8.x version in the guest.
 
 Continue to [06 — Rhino 8 setup](06-rhino-setup.md).

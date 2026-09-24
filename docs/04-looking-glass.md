@@ -179,10 +179,11 @@ The log should now show `Device Description: NVIDIA <your card>` and
 
 **Bump the VDD resolution** — the shipped `C:\VirtualDisplayDriver\vdd_settings.xml`
 lists 800×600, 1366×768, 1920×1080, 2560×1440, and 3840×2160, and
-Windows will default to 800×600 on first boot after install. SSH can't
-see interactive-session display state (same session isolation as the
-`Z:` mapping), so the quickest fix is to open the SPICE console with
-`virt-viewer --connect qemu:///system windows-eng` (kill
+Windows will default to 800×600 on first boot after install. Plain
+`ssh` lands in Windows session 0, which has no desktop, so it cannot
+reach display settings at all (see doc 08 for the full session-0 vs
+console-session split). The quickest fix is to open the SPICE console
+with `virt-viewer --connect qemu:///system windows-eng` (kill
 `looking-glass-client` first — the two can't share the SPICE port),
 then inside Windows go *Settings → System → Display*, click *Identify*,
 select the small 800×600 monitor (VDD), and bump *Display resolution*
@@ -225,7 +226,7 @@ Download the matching Windows installer from
 <https://looking-glass.io/downloads> — pick the **same version** you
 installed on Omarchy in step 3. The asset name looks like
 `looking-glass-host-Setup-<version>.exe`. Copy it to the guest via
-`Z:\vendor\` on the virtiofs share.
+`Z:\oma-eng\src\vendor\` on the virtiofs share.
 
 Install it. It registers a Windows service called *Looking Glass (host)*
 that starts at boot.

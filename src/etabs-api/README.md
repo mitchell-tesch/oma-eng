@@ -32,7 +32,7 @@ target ETABS build.
 ## Run
 
 ```powershell
-cd Z:\etabs-api\csharp\HelloETABS
+cd Z:\oma-eng\src\etabs-api\csharp\HelloETABS
 dotnet run -c Release
 ```
 

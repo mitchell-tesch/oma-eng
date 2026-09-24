@@ -46,8 +46,9 @@ license/
 *.lic
 
 # Guest-shared drop zones (installers, models, scratch data)
-# Guest sees `~/dev/oma-eng/src/` as `Z:\`. These subdirs are for
-# transferring binary blobs into the guest — never commit their contents.
+# Guest sees `~/dev/` as `Z:\`, so this tree is `Z:\oma-eng\src\`. These
+# subdirs are for transferring binary blobs into the guest — never
+# commit their contents.
 src/vendor/
 src/scratch/
 

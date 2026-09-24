@@ -45,12 +45,12 @@ so users can lift them straight into their own projects.
 ```powershell
 # Start SpaceGassApi.exe first (or leave it running in the background)
 
-cd Z:\spacegass-api\python
+cd Z:\oma-eng\src\spacegass-api\python
 uv sync
 uv run hello_spacegass.py
 uv run hello_spacegass_analysis.py
 
-cd Z:\spacegass-api\csharp\HelloSpaceGass
+cd Z:\oma-eng\src\spacegass-api\csharp\HelloSpaceGass
 dotnet run
 ```
 

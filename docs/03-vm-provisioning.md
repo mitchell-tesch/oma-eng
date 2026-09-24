@@ -73,17 +73,20 @@ Placeholders to change (search for `EDIT:` for XML-comment markers and
   applies to your host.
 - **Disk source path** — to the qcow2 you just created.
 - **ISO paths** — the Windows ISO and virtio-win.iso for install.
-- **Virtiofs sources** — the shipped XML has two `<filesystem>`
-  blocks. Point their `<source dir='...'/>` values at:
-  - `~/dev/oma-eng/src` (tag `src`, appears as `Z:` in the guest — the
-    walkthroughs in doc 06 onward all reference `Z:\<subproject>`);
-  - `~/dev` (tag `dev`, appears as `Y:` in the guest — sibling repos
-    alongside `oma-eng`, if any).
+- **Virtiofs source** — the shipped XML has one `<filesystem>` block.
+  Point its `<source dir='...'/>` at `~/dev` (tag `dev`). It appears as
+  `Z:` in the guest, so this repo's source tree is
+  `Z:\oma-eng\src\<subproject>` (what the walkthroughs in doc 06
+  onward reference) and any sibling repo is `Z:\<repo>\`.
 
-  Adjust both to your absolute paths, or delete the `dev` block if you
-  only ever want the repo-scoped share. To add or retire shares later,
+  One share is deliberate: the Windows VirtIO-FS service picks drive
+  letters in reverse from `Z:` on a first-come basis, so running two
+  services meant they raced and the letters could swap between boots.
+  Rooting the single share at `~/dev` covers every repo. To add or
+  retire shares later,
   [`scripts/set-guest-share`](../scripts/set-guest-share) edits the XML
-  and hot-attaches / detaches the device.
+  and hot-attaches / detaches the device — always pass `--letter` so
+  nothing races again.
 - **Evdev keyboard + mouse paths** — the `<qemu:commandline>` block at
   the bottom of the XML has two `evdev=/dev/input/by-id/usb-CHANGEME-…`
   entries. Only USB HID devices have stable `/dev/input/by-id/`
@@ -159,33 +162,38 @@ Verify after the reboot — each of these has bitten fresh installs:
    [02 — Host setup](02-host-setup.md) §10 and re-run
    `ipconfig /release && ipconfig /renew` in the guest.
 
-3. **`Z:` drive** should appear in Explorer pointing at
-   `~/dev/oma-eng/src` on the host. If it doesn't, open `services.msc`
-   → *VirtIO-FS Service* → try to Start. If it errors with *Error
-   1053: service did not respond in a timely fashion*, the WinFsp
-   filesystem framework isn't installed — download the MSI from
-   [https://winfsp.dev](https://winfsp.dev), install it (Typical),
-   then Start the service. Drive letter is auto-assigned; look for
-   the drive labelled `src` if it isn't `Z:`.
+3. **`Z:` drive** should appear in Explorer pointing at `~/dev` on the
+   host, so this repo's source tree is `Z:\oma-eng\src\`. If it
+   doesn't, open `services.msc` → *VirtIO-FS Service* → try to Start.
+   If it errors with *Error 1053: service did not respond in a timely
+   fashion*, the WinFsp filesystem framework isn't installed —
+   download the MSI from [https://winfsp.dev](https://winfsp.dev),
+   install it (Typical), then Start the service.
 
-4. **`Y:` drive** should appear alongside `Z:`, pointing at the
-   parent `~/dev/` on the host (so any sibling repo lives at
-   `Y:\<repo>\`). The shipped XML has two `<filesystem>` blocks (tags
-   `src` and `dev`); each tag needs its own Windows service instance
-   because `virtiofs.exe` handles one tag at a time. Install the
-   companion service once, from an **admin** PowerShell in the guest:
+4. **Pin the drive letter.** The shipped *VirtIO-FS Service* runs
+   `virtiofs.exe` with no arguments, which means `-m *` — take the
+   first free letter counting down from `Z:`. That is fine with a
+   single share but silently reshuffles if a second one ever appears.
+   Nail it down once, from an **admin** PowerShell in the guest:
 
    ```powershell
-   sc.exe create VirtioFsSvc-Dev `
-       binPath= "`"C:\Program Files\Virtio-Win\VioFS\virtiofs.exe`" -t dev -m *" `
-       start= auto `
-       DisplayName= "VirtIO-FS Service (dev)"
-   net start VirtioFsSvc-Dev
+   sc.exe config VirtioFsSvc `
+       binPath= "`"C:\Program Files\Virtio-Win\VioFS\virtiofs.exe`" -t dev -m Z:"
+   Restart-Service VirtioFsSvc
    ```
 
-   Adding a third share later is the same pattern — see
+   `-t dev` must match the `<target dir='dev'/>` tag in the domain XML.
+
+   > If you are migrating from the older two-share layout, also remove
+   > the companion service that served the retired `src` tag:
+   > `net stop VirtioFsSvc-Dev; sc.exe delete VirtioFsSvc-Dev`.
+   > Leaving both alive is exactly what caused `Y:`/`Z:` to swap.
+
+   Adding a second share later is the same pattern — see
    [scripts/set-guest-share](../scripts/set-guest-share), which
    prints the matching `sc.exe create` snippet for any new tag.
+   Pass `--letter` so the new service claims a fixed letter instead
+   of competing for `Z:`.
 
 ## 7. Install the Nvidia driver (in the guest)
 
@@ -236,7 +244,8 @@ virsh --connect qemu:///system snapshot-create-as windows-eng clean-install \
 - `virsh list` shows `windows-eng` `running`.
 - SPICE console works, guest boots into Windows 11.
 - Device Manager shows the Nvidia card, no warnings, `nvidia-smi` works.
-- `Z:\` mounts the host `src/` tree.
+- `Z:\` mounts the host `~/dev` tree, with this repo at
+  `Z:\oma-eng\src\`.
 - `ssh windows-eng` from Omarchy works (after adding a host entry in
   `~/.ssh/config`).
 

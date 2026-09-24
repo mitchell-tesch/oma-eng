@@ -176,7 +176,7 @@ covered there.
 
 1. Download the ETABS installer from CSi's client portal to the
    Omarchy host, drop into `~/dev/oma-eng/src/vendor/`, and
-   it appears at `Z:\vendor\` in the guest via virtiofs.
+   it appears at `Z:\oma-eng\src\vendor\` in the guest via virtiofs.
 2. Run the installer in the guest. Accept defaults. This repo's
    default is ETABS 23 (`C:\Program Files\Computers and Structures\
    ETABS 23\`); other versions (22, 24, …) install alongside without
@@ -221,7 +221,7 @@ same Reprise licence pool, same OAPI shape — with a ProgID swap.
 
 1. Download the SAP2000 installer from CSi's client portal to the
    Omarchy host, drop into `~/dev/oma-eng/src/vendor/`, and run from
-   `Z:\vendor\` in the guest.
+   `Z:\oma-eng\src\vendor\` in the guest.
 2. Accept defaults. Install location is
    `C:\Program Files\Computers and Structures\SAP2000 26\`
    (folder name follows the point release — `SAP2000 25\` for v25,
@@ -252,7 +252,7 @@ Use **SPACE GASS 14.5 or later** — earlier releases don't ship the
 REST API that the samples in this repo target.
 
 1. Download from the licensed-users page on spacegass.com to the host,
-   drop into `~/dev/oma-eng/src/vendor/`, run from `Z:\vendor\`.
+   drop into `~/dev/oma-eng/src/vendor/`, run from `Z:\oma-eng\src\vendor\`.
 2. Licence model:
    - **Cloud / subscription** — sign in through SPACE GASS's licence
      dialog with your StruSoft account. Snapshot-revert-safe like
@@ -337,7 +337,7 @@ From an interactive PowerShell in the guest (Looking Glass or VS Code
 Remote-SSH terminal — not plain `ssh windows-eng`):
 
 ```powershell
-cd Z:\etabs-api\csharp\HelloETABS
+cd Z:\oma-eng\src\etabs-api\csharp\HelloETABS
 dotnet build -c Release
 dotnet run -c Release
 ```
@@ -364,7 +364,7 @@ correctly. ETABS launches visibly, runs the analysis, then exits.
 [`.vscode/launch.json`](../src/etabs-api/csharp/HelloETABS/.vscode/launch.json),
 [`tasks.json`](../src/etabs-api/csharp/HelloETABS/.vscode/tasks.json),
 and [`extensions.json`](../src/etabs-api/csharp/HelloETABS/.vscode/extensions.json).
-Remote-SSH into the guest, open `Z:\etabs-api\csharp\HelloETABS`,
+Remote-SSH into the guest, open `Z:\oma-eng\src\etabs-api\csharp\HelloETABS`,
 accept the Dev Kit recommendation, wait for solution restore, F5.
 Same as HelloStrand7 / HelloRhino — see [doc 07 §8](07-strand7-setup.md)
 for the flow.

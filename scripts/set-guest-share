@@ -4,9 +4,13 @@
 #
 # The Windows virtiofs.exe service handles ONE tag per instance, so
 # each extra share on the guest also needs its own Windows service
-# (e.g. VirtioFsSvc-dev with `-t dev -m *`). This helper edits the
+# (e.g. VirtioFsSvc-dev with `-t dev -m Z:`). This helper edits the
 # host-side XML and attaches / detaches the PCI device; the guest-side
 # service install/uninstall snippet is printed at the end.
+#
+# ALWAYS PASS A LETTER. Without one the service uses `-m *`, which
+# grabs the first free letter counting down from Z: — so two services
+# race at boot and the letters can swap between runs.
 #
 # Adding a share is a two-step operation on the host:
 #   * shutoff guest: virsh define (or setmaxmem-style --config)
@@ -14,7 +18,7 @@
 #
 # Usage:
 #     scripts/set-guest-share --list
-#     scripts/set-guest-share --add HOST-PATH [TAG]     # add / update
+#     scripts/set-guest-share --add HOST-PATH [TAG] [--letter L]
 #     scripts/set-guest-share --remove TAG              # remove
 #     scripts/set-guest-share --dry-run --add PATH TAG  # preview
 #     scripts/set-guest-share --no-apply --add PATH TAG # repo-only
@@ -31,7 +35,7 @@ DOMAIN="windows-eng"
 VIRSH="virsh --connect qemu:///system"
 
 usage() {
-    sed -n '2,24p' "$0"
+    sed -n '2,28p' "$0"
     exit "${1:-0}"
 }
 
@@ -158,6 +162,7 @@ remove_share() {
 action=""
 host_path=""
 tag=""
+letter=""
 dry=0
 no_apply=0
 
@@ -179,6 +184,11 @@ while [[ $# -gt 0 ]]; do
             shift
             [[ $# -ge 1 ]] || { echo "--remove needs TAG" >&2; usage 2; }
             tag="$1"; shift
+            ;;
+        --letter)
+            shift
+            [[ $# -ge 1 ]] || { echo "--letter needs a drive letter" >&2; usage 2; }
+            letter="$1"; shift
             ;;
         --dry-run)   dry=1; shift ;;
         --no-apply)  no_apply=1; shift ;;
@@ -234,6 +244,20 @@ if [[ "$action" == "add" ]]; then
         exit 2
     fi
 fi
+
+if [[ -n "$letter" ]]; then
+    letter="${letter%:}"
+    if ! [[ "$letter" =~ ^[D-Zd-z]$ ]]; then
+        echo "--letter must be a single drive letter D-Z, got: $letter" >&2
+        exit 2
+    fi
+    letter="${letter^^}"
+fi
+
+# `-m *` makes virtiofs.exe take the first free letter counting down
+# from Z:, which is what lets concurrent services swap letters.
+mount_arg="*"
+[[ -n "$letter" ]] && mount_arg="${letter}:"
 
 if [[ "$action" == "remove" && -z "$tag" ]]; then
     echo "Missing TAG for --remove" >&2; exit 2
@@ -357,13 +381,20 @@ if [[ "$dom_state" == "running" ]]; then
 Guest-side follow-up (Looking Glass PowerShell or Remote-SSH, admin):
 
   # One virtiofs.exe service instance per tag. Install once:
-  sc.exe create VirtioFsSvc-${tag} binPath= "\"C:\\Program Files\\Virtio-Win\\VioFS\\virtiofs.exe\" -t ${tag} -m *" start= auto DisplayName= "VirtIO-FS Service (${tag})"
+  sc.exe create VirtioFsSvc-${tag} binPath= "\"C:\\Program Files\\Virtio-Win\\VioFS\\virtiofs.exe\" -t ${tag} -m ${mount_arg}" start= auto DisplayName= "VirtIO-FS Service (${tag})"
   net start VirtioFsSvc-${tag}
 
-  # Explorer then shows a new drive letter (Y:, X:, ... auto-picked).
+  # Explorer then shows the new drive at ${mount_arg}.
   # If it doesn't, virtio-win-guest-tools was never installed — see
   # docs/03-vm-provisioning.md §6.
 EOF
+        if [[ -z "$letter" ]]; then
+            cat <<'EOF'
+  NOTE: no --letter given, so the service uses `-m *` and will take
+  whatever letter is free at start time. With more than one share
+  running that is a race. Re-run with --letter to pin it.
+EOF
+        fi
     elif [[ "$action" == "remove" ]]; then
         cat <<EOF
 

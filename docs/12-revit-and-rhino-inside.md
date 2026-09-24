@@ -71,7 +71,7 @@ Three common models — all work in the guest:
 
 1. Download **Autodesk Access** from your Autodesk Account portal to
    the Omarchy host, drop into `~/dev/oma-eng/src/vendor/`, and run
-   from `Z:\vendor\` in the guest. (Autodesk Access replaced the old
+   from `Z:\oma-eng\src\vendor\` in the guest. (Autodesk Access replaced the old
    Autodesk Desktop App in 2023.)
 2. Sign in with your Autodesk Account.
 3. From the Access panel, install Revit — pick **Revit 2025** or
@@ -176,7 +176,7 @@ extension out to the virtiofs share so you can edit on Omarchy:
 # In the guest, admin PowerShell:
 New-Item -ItemType SymbolicLink `
     -Path "$env:APPDATA\pyRevit-Master\extensions\MyTools.extension" `
-    -Target "Z:\pyrevit-extensions\MyTools.extension"
+    -Target "Z:\oma-eng\src\pyrevit-extensions\MyTools.extension"
 ```
 
 Then edit `script.py` files on Omarchy — pyRevit's *Reload* button
@@ -207,7 +207,7 @@ For **C# add-ins** (`.addin` + `.dll`):
    cause `TypeLoadException`).
 3. Drop an `.addin` manifest at
    `%APPDATA%\Autodesk\Revit\Addins\2026\MyAddin.addin` pointing at
-   the built `.dll` path (a symlink to `Z:\...\bin\Debug\` avoids
+   the built `.dll` path (a symlink to `Z:\oma-eng\src\...\bin\Debug\` avoids
    copying on every rebuild).
 4. Debug via VS Code Remote-SSH → attach to `Revit.exe` — same
    pattern as [doc 06 § 7](06-rhino-setup.md).
