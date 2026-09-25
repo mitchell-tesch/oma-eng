@@ -7,6 +7,14 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SECURITY.md: the shared `~/dev` tree.** The default read-write share
+  lets a compromised guest modify every repo under `~/dev`. That covers
+  this repo's `sudo` scripts and hooks, and each repo's `.git/config` /
+  hooks, which host `git` executes. Git's `safe.directory` doesn't help,
+  because guest writes are owned by the host user. The section lists
+  mitigations (narrower share, root steps from a non-shared clone), and
+  doc 03 §3 links to it.
+- README trademark / non-affiliation note.
 - **Choose-your-path + setup checklist.** Doc 01 has a *Desktop or
   laptop?* table (how to tell, and every step that differs for a muxless
   laptop dGPU, with links). The README has an ordered 16-step checklist
@@ -73,7 +81,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   service to race for one (`-m *`).
 - GitHub issue templates (`.github/ISSUE_TEMPLATE/`).
 - CI now runs `dotnet restore` on `HelloSpaceGass.csproj` and
-  `pip install --dry-run` on every `requirements.txt` alongside the
+  `uv lock --check` on every `pyproject.toml` alongside the
   existing `validate-config.sh` checks.
 
 ### Changed

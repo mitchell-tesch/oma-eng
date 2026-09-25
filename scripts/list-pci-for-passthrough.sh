@@ -89,7 +89,6 @@ fi
 # audio function, no USB-C controller on the card. Warn the user so they
 # don't blindly add a second <hostdev> block or a second vfio id.
 if [[ "$vendor" == "10de" && -n "$ids" ]]; then
-    id_count=$(awk -F, '{print NF}' <<<"$ids")
     has_3d=0
     has_vga=0
     has_audio=0

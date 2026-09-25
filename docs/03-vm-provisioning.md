@@ -118,6 +118,11 @@ Placeholders to change (search for `EDIT:` for XML-comment markers and
   [`scripts/set-guest-share`](../scripts/set-guest-share) edits the XML
   and hot-attaches / detaches the device — always pass `--letter` so
   nothing races again.
+
+  **Security:** the share is read-write, so the guest can modify every
+  repo under `~/dev`, including this one, whose scripts you run with
+  `sudo`. If you treat the guest as untrusted, share a narrower
+  directory; see [SECURITY.md](../SECURITY.md#the-shared-dev-tree-enabled-by-default).
 - **Evdev keyboard + mouse (optional, off by default)** — the
   `<qemu:commandline>` block at the bottom of the XML carries a
   commented-out pair of `evdev=/dev/input/by-id/usb-CHANGEME-…` entries.

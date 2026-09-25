@@ -27,20 +27,18 @@ jobs:
           chmod +x scripts/validate-config.sh
           scripts/validate-config.sh
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
 
-      - name: Dry-run resolve every requirements.txt
+      - name: Check every uv lockfile is current
         run: |
           set -e
-          python -m pip install --upgrade pip
-          # --dry-run resolves + downloads to cache without installing.
-          # Fails if a pinned package no longer exists or its deps drift.
-          find src -name requirements.txt -print0 | while IFS= read -r -d '' req; do
-            echo "==> $req"
-            python -m pip install --dry-run --user -r "$req"
+          # Fails if a pyproject.toml changed without re-locking, or a
+          # pinned package can no longer be resolved.
+          git ls-files '*pyproject.toml' | while read -r p; do
+            d="$(dirname "$p")"
+            echo "==> $d"
+            (cd "$d" && uv lock --check)
           done
 
       - name: Setup .NET

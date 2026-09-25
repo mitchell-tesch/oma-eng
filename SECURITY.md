@@ -19,12 +19,45 @@ guest-initiated attacks with:
 - **QEMU/KVM sandboxing** — libvirt runs QEMU under a dedicated
   user with restricted capabilities; the guest cannot directly
   reach host filesystems except through the explicit `virtiofs`
-  share.
+  share. That share is the biggest hole in this boundary; see below.
 - **Explicit passthrough** — every USB dongle, GPU, or other
   device the guest sees is declared in the libvirt XML. Devices
   not listed are not visible to the guest.
 
-## What *is* documented in this repo that weakens isolation
+## The shared `~/dev` tree (enabled by default)
+
+The template shares the host's whole `~/dev` **read-write** with the
+guest as `Z:\`. Files the guest writes land owned by your host user, so
+a compromised guest can change anything there, and nothing on the host
+can tell the change apart from your own edits. That includes:
+
+- **This repo's scripts and configs**, which you run with `sudo`
+  (`prepare-host.sh`, `set-cmdline`) or install as root (the libvirt
+  hook, `cpu-governor`). The *installed* copies in `/etc` and
+  `/usr/local/bin` are outside the share. The risk is the next time you
+  run or re-install from the shared tree.
+- **Every repo's `.git/`** under `~/dev`. A tampered `.git/config`
+  (`core.fsmonitor`, `core.hooksPath`, aliases) or `.git/hooks/*` runs
+  code on the host on your next `git status`, `commit` or `pull`. Git's
+  `safe.directory` check doesn't help, because the files are owned by you.
+- **Anything else you execute or source from `~/dev`**: build scripts,
+  `uv run`, Makefiles, VS Code tasks.
+
+Mitigations, strongest first:
+
+- Share less. Put guest-facing work in its own directory and share only
+  that, e.g. `scripts/set-guest-share --remove dev` then
+  `--add ~/dev/guest-work guest --letter Z`. Keep this repo, and
+  anything you run as root, outside it. Doc paths such as
+  `Z:\oma-eng\src\` then need adjusting to where you put the samples.
+- Run host-side root steps from a checkout the guest can't write, e.g.
+  a fresh `git clone` outside `~/dev`, rather than from `~/dev/oma-eng`.
+- If you suspect the guest was compromised, don't run `git` or scripts
+  in the shared tree until you've checked `.git/config` and
+  `.git/hooks/` by hand (`git` itself may execute them). Revert the
+  guest to a known-good snapshot.
+
+## What else is documented in this repo that weakens isolation
 
 Two recipes in the docs weaken the default isolation and are called
 out where they appear:

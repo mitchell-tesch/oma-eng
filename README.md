@@ -104,7 +104,7 @@ before the next one begins.
 docs assumes this repo is at `Z:\oma-eng\`:
 
 ```bash
-mkdir -p ~/dev && git clone <this-repo-url> ~/dev/oma-eng && cd ~/dev/oma-eng
+mkdir -p ~/dev && git clone https://github.com/mitchell-tesch/oma-eng.git ~/dev/oma-eng && cd ~/dev/oma-eng
 ```
 
 1. [Hardware & BIOS prep](docs/01-hardware-prep.md)
@@ -220,3 +220,10 @@ You'll know the setup is done when all of these are true:
 MIT — see [LICENSE](LICENSE). Third-party components (Rhino, Strand7,
 ETABS, SpaceGass, Office, Looking Glass host application, Windows) are
 subject to their own licences and are not distributed here.
+
+This is an independent community project, not affiliated with or
+endorsed by any vendor named in it. Rhino and Grasshopper (Robert
+McNeel & Associates), Strand7, ETABS and SAP2000 (Computers and
+Structures, Inc.), SPACE GASS, Revit (Autodesk), Bluebeam Revu,
+Microsoft Windows and Office, NVIDIA, and Omarchy are trademarks of
+their respective owners, used here only to identify the software.
