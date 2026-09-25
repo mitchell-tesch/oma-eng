@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # list-pci-for-passthrough.sh — print the vendor:device IDs and PCI addresses
-# of all likely-GPU devices, in the exact format you paste into the kernel
-# cmdline (vfio-pci.ids=...) and into the libvirt <hostdev> block.
+# of all likely-GPU devices, in the exact format you paste into
+# configs/modprobe.d/vfio.conf (ids=...) and into the libvirt <hostdev> block.
 #
 # Usage:
 #     scripts/list-pci-for-passthrough.sh
@@ -74,10 +74,10 @@ lspci -Dnn | awk -v v="$vendor" '
     }'
 
 echo
-echo "For the kernel cmdline (see docs/02-host-setup.md):"
+echo "For configs/modprobe.d/vfio.conf (see docs/02-host-setup.md §3):"
 ids="$(collect_ids)"
 if [[ -n "$ids" ]]; then
-    echo "    vfio-pci.ids=${ids}"
+    echo "    options vfio-pci ids=${ids} disable_vga=1"
 else
     echo "    (no matching devices found)"
 fi
@@ -109,9 +109,10 @@ no audio function. That is a muxless mobile Optimus card (typical on
 gaming and mobile-workstation laptops). Do NOT add a second <hostdev>
 block or a second vfio-pci id for an audio function — there isn't one.
 Guest audio must go through the emulated ich9/HDA device (already in
-configs/libvirt/windows-eng.xml). Looking Glass will still work: the
-guest Nvidia driver renders to the IVSHMEM shared buffer and the host
-client copies from there — the muxless design is invisible to LG.
+configs/libvirt/windows-eng.xml). Looking Glass needs the laptop path:
+the kvmfr module, a 64-bit MMIO cap and a Virtual Display Driver in the
+guest (docs/04-looking-glass.md §2b; overview in docs/01 "Desktop or
+laptop?").
 EOF
     elif (( has_vga && !has_audio )); then
         echo

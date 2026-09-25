@@ -60,14 +60,14 @@ if command -v virt-xml-validate >/dev/null 2>&1; then
     # windows-eng.xml uses the qemu XML namespace; virt-xml-validate in
     # default schema mode rejects that. Use --schema domain explicitly,
     # which is what libvirt actually uses at define time.
-    xml=configs/libvirt/windows-eng.xml
-    if [[ -f "$xml" ]]; then
+    for xml in configs/libvirt/windows-eng.xml configs/libvirt/windows-eng.local.xml; do
+        [[ -f "$xml" ]] || continue
         if virt-xml-validate "$xml" domain >/tmp/validate-libvirt.err 2>&1; then
             pass "$xml"
         else
             fail "$xml: $(cat /tmp/validate-libvirt.err)"
         fi
-    fi
+    done
 else
     skip "virt-xml-validate not installed (pacman -S libvirt)"
 fi
@@ -177,6 +177,44 @@ while IFS= read -r -d '' md; do
 done < <(find . -maxdepth 3 -name '*.md' -type f -not -path './.git/*' -print0)
 if [[ $missing -eq 0 ]]; then
     pass "no dead relative links found"
+fi
+
+# --- 8. Doc #anchor links --------------------------------------------------
+echo "==> Docs #anchor links"
+if [[ -n "$py" ]]; then
+    # GitHub-style heading slugs; links inside code are ignored.
+    anchor_check='
+import os, re, sys
+def slugs(path):
+    out, seen, code = set(), {}, False
+    for l in open(path, encoding="utf-8"):
+        if l.lstrip().startswith("```"): code = not code; continue
+        m = None if code else re.match(r"#{1,6} (.*)", l)
+        if not m: continue
+        s = re.sub(r"[^\w\- ]", "", m.group(1).strip().lower()).replace(" ", "-")
+        i = seen.get(s, 0); out.add(f"{s}-{i}" if i else s); seen[s] = i + 1
+    return out
+cache = {}
+for md in sys.argv[1:]:
+    txt = re.sub(r"(?ms)^\s*```.*?^\s*```", "", open(md, encoding="utf-8").read())
+    txt = re.sub(r"`[^`]*`", "", txt)
+    for target, frag in re.findall(r"\]\(([^)#\s]*)#([^)\s]+)\)", txt):
+        if re.match(r"[a-z]+://", target): continue
+        path = os.path.normpath(os.path.join(os.path.dirname(md), target)) if target else md
+        if not path.endswith(".md") or not os.path.exists(path): continue
+        if path not in cache: cache[path] = slugs(path)
+        if frag not in cache[path]:
+            print(f"{md} -> {target}#{frag}")
+'
+    mapfile -d '' mdfiles < <(find . -maxdepth 3 -name '*.md' -type f -not -path './.git/*' -not -path '*/.venv/*' -print0)
+    bad_anchors="$("$py" -c "$anchor_check" "${mdfiles[@]}")"
+    if [[ -z "$bad_anchors" ]]; then
+        pass "all #anchor links resolve"
+    else
+        while IFS= read -r l; do fail "$l"; done <<<"$bad_anchors"
+    fi
+else
+    skip "python not available for anchor check"
 fi
 
 # --- Summary ------------------------------------------------------------

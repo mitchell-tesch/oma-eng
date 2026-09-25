@@ -122,6 +122,41 @@ mkdir -p ~/dev && git clone <this-repo-url> ~/dev/oma-eng && cd ~/dev/oma-eng
 13. [Bluebeam Revu + collaboration workflows](docs/13-collaboration-and-backup.md) — drawing markup, cloud storage, VPN, corporate licence servers, backup
 14. [Native Omarchy tooling](docs/14-native-omarchy-tooling.md) — open-source (FreeCAD + Bonsai/BlenderBIM + Jupyter/Handcalcs) for the work that doesn't need the guest
 
+Docs 01–05 are the core setup. 06–07 and 10–13 are per-app and optional
+(install only what you use), 08 is the dev workflow, and 09 is reference.
+
+### Setup checklist
+
+Check doc 01's **Desktop or laptop?** table first; rows marked *laptop*
+apply only to muxless laptop dGPUs.
+
+| # | Step | Doc | Helper / command | Checkpoint |
+|---|---|---|---|---|
+| 1 | Firmware: VT-x/SVM, VT-d/IOMMU, iGPU primary, UEFI-only | [01](docs/01-hardware-prep.md) | `scripts/detect-host.sh` | Reboot into firmware |
+| 2 | Update Omarchy, then a bootable snapshot | [02 §0](docs/02-host-setup.md) | `omarchy update`, `omarchy-snapshot create` | Reboot if kernel updated |
+| 3 | Packages, vfio drop-ins, libvirt hook, services | [02 §1](docs/02-host-setup.md) | `sudo scripts/prepare-host.sh` | |
+| 4 | Your dGPU IDs into `configs/modprobe.d/vfio.conf`, then re-run step 3 | [02 §3](docs/02-host-setup.md) | `scripts/list-pci-for-passthrough.sh 10de` | No `WARN vfio.conf` from step 3 |
+| 5 | Size the guest RAM (hosts < 64 GB) | [02 §6](docs/02-host-setup.md) | `scripts/set-guest-memory <GiB>` | |
+| 6 | Kernel cmdline: IOMMU + hugepages | [02 §2](docs/02-host-setup.md) | `sudo scripts/set-cmdline` | **Reboot** |
+| 7 | Verify IOMMU groups + vfio binding | [02 §4, §8](docs/02-host-setup.md) | `scripts/check-iommu.sh`, `lspci -nnk -d 10de:` | Exit criteria in 02 |
+| 8 | Firewall: allow `virbr0` (UFW) | [02 §10](docs/02-host-setup.md) | `sudo ufw …` | |
+| 9 | *Optional:* SSD TRIM through LUKS | [02 §11](docs/02-host-setup.md) | `cryptsetup refresh --allow-discards` | |
+| 10 | Images subvolume, disk, ISOs | [03 §1–2](docs/03-vm-provisioning.md) | `qemu-img create` | |
+| 11 | Edit + define the domain XML | [03 §3–4](docs/03-vm-provisioning.md) | `scripts/detect-host.sh --vcpupin` | `virt-xml-validate … domain` |
+| 12 | Install Windows, virtio drivers, Nvidia driver | [03 §5–9](docs/03-vm-provisioning.md) | SPICE / `virt-viewer` | Snapshot `clean-install` |
+| 13 | *Laptop:* kvmfr module + udev rule + `qemu.conf` ACL; then MMIO cap in the XML; VDD once the LG host app is in (step 14) | [04 §2b](docs/04-looking-glass.md) | `yay -S looking-glass-module-dkms`, `sudo scripts/prepare-host.sh --skip-packages --kvmfr` | `/dev/kvmfr0` is `root:kvm 0660` |
+| 14 | Looking Glass client + host app | [04 §2–6](docs/04-looking-glass.md) | `scripts/install-looking-glass.sh` | LG shows the desktop |
+| 15 | Guest tuning, SSH | [05](docs/05-windows-guest.md) | PowerShell in guest | Snapshot `tuned` |
+| 16 | Apps you need | [06](docs/06-rhino-setup.md), [07](docs/07-strand7-setup.md), [10](docs/10-office-integration.md)–[13](docs/13-collaboration-and-backup.md) | | Snapshot after each app is licensed + verified |
+
+Snapshots are internal to the qcow2 (they don't protect against losing
+the disk); see [13](docs/13-collaboration-and-backup.md) for backups.
+To back out of any host step, or remove the whole setup, see
+[02 — Undo and rollback](docs/02-host-setup.md#undo-and-rollback).
+Plan for roughly 10 GB of ISOs and a 200 GB guest disk. It holds about
+25 GB after Windows and around 100 GB with the full app stack, before
+snapshots.
+
 ## Repo layout
 
 ```

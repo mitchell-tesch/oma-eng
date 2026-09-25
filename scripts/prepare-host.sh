@@ -32,6 +32,9 @@
 #         # start with "device is not available for use" on the audio
 #         # function between VM restarts. Requires root. No-op on muxless
 #         # mobile Optimus cards (they have no audio function).
+#     scripts/prepare-host.sh --kvmfr             # muxless laptop dGPU:
+#         # also set up Looking Glass's kvmfr module (autoload, size,
+#         # udev rule, qemu.conf cgroup ACL). Doc 04 §2b Fix 1.
 
 set -euo pipefail
 
@@ -39,14 +42,16 @@ DRY=0
 SKIP_PACKAGES=0
 RESET_AUDIO_FN=0
 REMOVE_NVIDIA=0
+KVMFR=0
 for arg in "$@"; do
     case "$arg" in
         --dry-run)        DRY=1 ;;
         --skip-packages)  SKIP_PACKAGES=1 ;;
         --reset-audio-fn) RESET_AUDIO_FN=1 ;;
         --remove-nvidia)  REMOVE_NVIDIA=1 ;;
+        --kvmfr)          KVMFR=1 ;;
         -h|--help)
-            sed -n '2,34p' "$0"; exit 0 ;;
+            sed -n '2,37p' "$0"; exit 0 ;;
         *) echo "Unknown arg: $arg" >&2; exit 2 ;;
     esac
 done
@@ -136,6 +141,15 @@ else
 fi
 
 echo "==> Configs"
+guest_xml="$REPO_ROOT/configs/libvirt/windows-eng.local.xml"
+[[ -f "$guest_xml" ]] || guest_xml="$REPO_ROOT/configs/libvirt/windows-eng.xml"
+guest_gib=$(( $(sed -n "s|.*<memory unit='KiB'>\([0-9]\+\)</memory>.*|\1|p" "$guest_xml" | head -n1) / 1048576 ))
+# Rendered with the guest's page count; installing the template's own
+# count would let systemd-sysctl trim the reservation at boot.
+sysctl_rendered="$(mktemp)"
+sed -E "s|^vm\.nr_hugepages = [0-9]+|vm.nr_hugepages = ${guest_gib}|" \
+    "$REPO_ROOT/configs/sysctl.d/99-vm-hugepages.conf" > "$sysctl_rendered"
+chmod 644 "$sysctl_rendered"
 install_file "$REPO_ROOT/configs/modprobe.d/vfio.conf"       /etc/modprobe.d/vfio.conf
 vfio_ids="$(sed -n 's/^options vfio-pci ids=\([^ ]*\).*/\1/p' "$REPO_ROOT/configs/modprobe.d/vfio.conf")"
 for id in ${vfio_ids//,/ }; do
@@ -146,8 +160,63 @@ for id in ${vfio_ids//,/ }; do
     fi
 done
 install_file "$REPO_ROOT/configs/mkinitcpio.d/vfio.conf"     /etc/mkinitcpio.conf.d/vfio.conf
-install_file "$REPO_ROOT/configs/sysctl.d/99-vm-hugepages.conf" /etc/sysctl.d/99-vm-hugepages.conf
+install_file "$sysctl_rendered"                                 /etc/sysctl.d/99-vm-hugepages.conf
+rm -f "$sysctl_rendered"
 install_file "$REPO_ROOT/configs/libvirt/libvirt-guests"     /etc/conf.d/libvirt-guests
+
+# --- Looking Glass kvmfr (muxless laptop dGPU, doc 04 §2b Fix 1) ----------
+if [[ $KVMFR -eq 1 ]]; then
+    echo "==> Looking Glass kvmfr"
+    install_file "$REPO_ROOT/configs/modules-load.d/kvmfr.conf" /etc/modules-load.d/kvmfr.conf
+    install_file "$REPO_ROOT/configs/modprobe.d/kvmfr.conf"     /etc/modprobe.d/kvmfr.conf
+    install_file "$REPO_ROOT/configs/udev/99-kvmfr.rules"       /etc/udev/rules.d/99-kvmfr.rules
+
+    qemu_conf=/etc/libvirt/qemu.conf
+    if $SUDO grep -qE '^[[:space:]]*cgroup_device_acl' "$qemu_conf" 2>/dev/null; then
+        if $SUDO awk '/^[[:space:]]*cgroup_device_acl/,/\]/' "$qemu_conf" | grep -q '"/dev/kvmfr0"'; then
+            printf '  ok  %s cgroup_device_acl allows /dev/kvmfr0\n' "$qemu_conf"
+        else
+            printf '  WARN %s has a custom cgroup_device_acl without "/dev/kvmfr0".\n' "$qemu_conf"
+            printf '       Add it to that list by hand (doc 04 §2b), then restart libvirtd.\n'
+        fi
+    elif [[ $DRY -eq 1 ]]; then
+        printf '  [dry-run] append cgroup_device_acl (defaults + /dev/kvmfr0) to %s\n' "$qemu_conf"
+    else
+        # The list replaces libvirt's built-in default, so repeat the defaults.
+        $SUDO cp -a "$qemu_conf" "$qemu_conf.bak.$(date +%s)"
+        $SUDO tee -a "$qemu_conf" >/dev/null <<'EOF'
+
+# Added by oma-eng prepare-host.sh --kvmfr (Looking Glass, doc 04 §2b)
+cgroup_device_acl = [
+    "/dev/null", "/dev/full", "/dev/zero",
+    "/dev/random", "/dev/urandom",
+    "/dev/ptmx", "/dev/kvm",
+    "/dev/rtc", "/dev/hpet",
+    "/dev/userfaultfd",
+    "/dev/kvmfr0"
+]
+EOF
+        printf '  new %s cgroup_device_acl (+ /dev/kvmfr0)\n' "$qemu_conf"
+        run "$SUDO systemctl try-restart libvirtd.service virtqemud.service"
+    fi
+
+    if modinfo kvmfr >/dev/null 2>&1; then
+        run "$SUDO modprobe kvmfr"
+        run "$SUDO udevadm control --reload-rules"
+        run "$SUDO udevadm trigger --subsystem-match=kvmfr"
+        [[ $DRY -eq 1 ]] || printf '  ok  %s\n' "$(stat -c '/dev/kvmfr0 %U:%G %a' /dev/kvmfr0 2>/dev/null || echo '/dev/kvmfr0 missing')"
+    else
+        echo "  NOTE kvmfr module not installed. As your normal user (AUR helpers"
+        echo "       refuse root): yay -S looking-glass-module-dkms, then re-run"
+        echo "       this script with --kvmfr to load it."
+    fi
+    echo "  Still manual (doc 04 §2b): the <qemu:commandline> kvmfr + MMIO block in"
+    echo "  windows-eng.xml, the Virtual Display Driver in the guest, and"
+    echo "  shmFile = /dev/kvmfr0 in ~/.config/looking-glass/client.ini."
+elif lspci -n 2>/dev/null | grep -qE ' 0302: 10de:'; then
+    echo "  NOTE muxless Nvidia dGPU detected: re-run with --kvmfr for the"
+    echo "       Looking Glass host setup (doc 04 §2b)."
+fi
 
 # cpu-governor helper + libvirt qemu hook. The hook is invoked by
 # libvirtd on every guest state change, so it must be executable and
@@ -308,7 +377,7 @@ echo
 echo "     Or manually edit /etc/kernel/cmdline (Omarchy quattro default)"
 echo "     and append:"
 echo
-echo "     $iommu_param iommu=pt default_hugepagesz=1G hugepagesz=1G hugepages=$(( $(sed -n "s|.*<memory unit='KiB'>\([0-9]\+\)</memory>.*|\1|p" "$REPO_ROOT/configs/libvirt/windows-eng.xml" | head -n1) / 1048576 ))"
+echo "     $iommu_param iommu=pt default_hugepagesz=1G hugepagesz=1G hugepages=$guest_gib"
 echo
 echo "     Then rebuild the UKI + limine.conf: sudo limine-update"
 echo "  2. Reboot."

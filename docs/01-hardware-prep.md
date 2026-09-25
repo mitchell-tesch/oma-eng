@@ -8,6 +8,35 @@ The **discrete GPU is always Nvidia** — AMD dGPU passthrough works
 similarly but has its own reset-bug rabbit hole that this repo
 deliberately doesn't cover.
 
+## Desktop or laptop? Pick your path
+
+The steps are mostly shared, but a **muxless laptop dGPU** (most laptops
+with an Nvidia GPU and Optimus: no display outputs wired to the dGPU)
+needs extra pieces. Tell which you have after Omarchy boots:
+
+```bash
+scripts/list-pci-for-passthrough.sh 10de
+```
+
+If it lists only a **3D controller (class 0302)** and prints the
+single-function advisory, follow the laptop column. A VGA controller
+(0300) plus an audio function (0403) means desktop.
+
+| | Desktop dGPU | Muxless laptop dGPU |
+|---|---|---|
+| Host display | Monitor on the **iGPU** outputs | Built-in panel (already iGPU) |
+| `vfio.conf` IDs / `<hostdev>` blocks | Every function (VGA + audio, sometimes USB-C) → one `<hostdev>` each ([02 §3](02-host-setup.md), [03 §3](03-vm-provisioning.md)) | The single 3D controller → one `<hostdev>` |
+| Looking Glass shared memory | Uncomment `<shmem>` ([04 §2a](04-looking-glass.md)) | `kvmfr` module + `<qemu:commandline>` + 64-bit MMIO cap ([04 §2b](04-looking-glass.md)) |
+| What Windows draws on | A monitor or an HDMI/DP **dummy plug** on the dGPU, or the Virtual Display Driver | **Virtual Display Driver required** ([04 §2b](04-looking-glass.md) Fix 3, [05 §4](05-windows-guest.md)) |
+| LG client `shmFile` | `/dev/shm/looking-glass` | `/dev/kvmfr0` |
+| Input | Looking Glass / SPICE; evdev optional | Same; evdev needs an **external USB** keyboard/mouse |
+| Host sleep while VM runs | Blocked by the libvirt hook ([02 §9](02-host-setup.md)) | Same, and matters more (lid close) |
+| Expected guest warning | — | *NVIDIA Platform Controllers and Framework* in Device Manager (harmless) |
+
+Either way the dGPU is bound to `vfio-pci` at boot and is **unavailable
+to the host**, even while the VM is off; host apps render on the iGPU
+([14](14-native-omarchy-tooling.md)).
+
 ## Confirm the CPU supports virtualisation + IOMMU
 
 ```bash
@@ -63,13 +92,14 @@ AMD-specific gotchas:
 
 - Connect at least one monitor to the **iGPU display outputs** on the
   motherboard. This is what Hyprland will drive.
-- **Optionally** connect a second monitor to the Nvidia dGPU. It will be
-  black while Windows isn't running; when the VM starts, this becomes the
-  guest's native display and can be used for full-screen CAD work if you
-  ever want to bypass Looking Glass.
-- Keep a USB keyboard + mouse pair for the host. The guest will use them
-  via evdev pass-through (a hot-key switches focus), so you don't need a
-  second pair — but a spare set on a USB switch is a nice fallback.
+- **Desktop:** Windows must be drawing to a display on the dGPU for
+  Looking Glass to capture it. Connect a second monitor, fit a cheap
+  HDMI/DP dummy plug, or use the Virtual Display Driver from doc 04 §2b.
+  A real monitor on the dGPU also lets you bypass Looking Glass for
+  full-screen work.
+- Keyboard + mouse stay on the host; Looking Glass forwards them to the
+  guest over SPICE. Evdev pass-through (doc 04 §8) is optional and needs
+  USB devices, so laptops need an external pair for it.
 
 ## Verify IOMMU groups after Linux boot
 

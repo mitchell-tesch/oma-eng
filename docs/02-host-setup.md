@@ -28,6 +28,15 @@ omarchy update
 (Or *Update ▸ Omarchy* from the Omarchy menu with `Super + Space`.)
 Reboot if the kernel updated.
 
+Then take one more snapshot, right before this doc changes the kernel
+command line, initramfs and drivers. It appears under **Snapshots** in
+the Limine boot menu, so you can boot back to it if a later step leaves
+the host unbootable ([Undo and rollback](#undo-and-rollback)):
+
+```bash
+omarchy-snapshot create
+```
+
 ## 1. Run the host-prep script
 
 Run everything from the repo root at `~/dev/oma-eng` (see the README's
@@ -43,7 +52,8 @@ shutdown, drops a Hyprland Looking Glass config in
 `~/.config/hypr/` (`looking-glass.lua` on Omarchy quattro's Lua config,
 `looking-glass.conf` on older Hyprland) if a Hyprland config dir exists,
 adds you to the `libvirt` and `kvm` groups, enables `libvirtd.socket`
-and `virtlogd.socket`, and rebuilds the initramfs.
+and `virtlogd.socket`, and rebuilds the initramfs. On a muxless laptop
+dGPU it prints a hint to re-run with `--kvmfr` once you reach doc 04 §2b.
 
 **On Omarchy the installer offers to enable the Nvidia driver during
 setup, and enabling it puts `nvidia`, `/etc/modprobe.d/nvidia.conf` and
@@ -192,14 +202,14 @@ Omarchy's snapshot regeneration.
   [`configs/sysctl.d/99-vm-hugepages.conf`](../configs/sysctl.d/99-vm-hugepages.conf)
   instead.
 
-The guest memory value is quietly duplicated in three files
-([`windows-eng.xml`](../configs/libvirt/windows-eng.xml),
-[`99-vm-hugepages.conf`](../configs/sysctl.d/99-vm-hugepages.conf),
-[`hugepages.service`](../configs/systemd/hugepages.service)) plus
-this kernel cmdline. Rather than edit each by hand, use
-[`scripts/set-guest-memory`](../scripts/set-guest-memory) — it
-retargets the three repo files atomically and prints the exact
-`hugepages=N` value to paste here:
+The guest memory size lives in your machine's copy of the domain XML,
+`configs/libvirt/windows-eng.local.xml` (gitignored; doc 03 §3 creates
+it from the tracked template). `set-cmdline` reads `hugepages=N` from it.
+To change the size, use
+[`scripts/set-guest-memory`](../scripts/set-guest-memory) rather than
+editing by hand. It updates the local XML, the installed sysctl drop-in
+(if any) and libvirt's config together, then tells you to re-run
+`set-cmdline`:
 
 ```bash
 scripts/set-guest-memory 32               # set guest to 32 GiB
@@ -345,13 +355,14 @@ sudo sysctl --system
 > reports the cmdline count, `/proc/meminfo` reports the sysctl count.
 >
 > [`scripts/set-guest-memory <GiB>`](../scripts/set-guest-memory) keeps
-> every duplicated field in sync in one shot — the three repo files, the
-> installed `/etc/sysctl.d/` drop-in (via `sudo install` + `sysctl
-> --system`), and the libvirt persistent config for `windows-eng` (via
-> `virsh setmaxmem`/`setmem --config` for a defined guest, or `virsh
-> define` for a fresh install). limine.conf stays manual by design.
-> Pass `--no-apply` to touch only the repo files, or `--dry-run` to
-> diff without changing anything.
+> them in sync in one shot. It sets `<memory>` in `windows-eng.local.xml`,
+> re-renders the installed `/etc/sysctl.d/` drop-in with the new count
+> (`sudo install` + `sysctl --system`), and updates the libvirt
+> persistent config (`virsh setmaxmem`/`setmem --config` for a defined
+> guest, or `virsh define` for a fresh install). `prepare-host.sh`
+> renders the drop-in the same way. Tracked repo files are never edited.
+> Pass `--no-apply` to touch only the local XML, or `--dry-run` to diff
+> without changing anything; then `sudo scripts/set-cmdline` + reboot.
 
 ## 7. Reboot
 
@@ -491,6 +502,91 @@ From the next reboot btrfs also enables `discard=async` on its own
   returns a matching rule / the `libvirt` zone.
 
 If any of these fail, do not proceed — fix here first.
+
+## Undo and rollback
+
+### Host won't boot after a cmdline or initramfs change
+
+1. In the Limine boot menu, open **Snapshots** and boot the one from §0.
+   If only the initramfs changed (vfio drop-ins), the **fallback** entry
+   may also get you in.
+2. From the booted snapshot, either make it permanent with
+   `omarchy-snapshot restore`, or fix forward on the normal entry by
+   removing what `set-cmdline` added:
+
+   ```bash
+   sudo rm /etc/limine-entry-tool.d/vfio.conf    # Omarchy 4.x drop-in
+   sudo limine-update
+   ```
+
+   On other bootloaders `set-cmdline` left a timestamped `.bak` next to
+   the file it edited; copy it back.
+
+The usual cause is a `hugepages=` count too large for the host's RAM.
+`set-cmdline` refuses those, but hand edits don't.
+
+### Give the dGPU back to the host
+
+For when you want CUDA or the Nvidia driver on Linux again (the VM then
+can't use the card):
+
+```bash
+sudo rm /etc/modprobe.d/vfio.conf /etc/mkinitcpio.conf.d/vfio.conf
+grep -E '\[ALPM\] removed nvidia' /var/log/pacman.log   # what --remove-nvidia removed
+sudo pacman -S <those packages>
+sudo mkinitcpio -P && sudo limine-update && sudo reboot
+```
+
+To return the hugepage RAM too, delete `hugepages=`,
+`default_hugepagesz=1G` and `hugepagesz=1G` from
+`/etc/limine-entry-tool.d/vfio.conf`, then
+`limine-update`. The IOMMU tokens are harmless to keep.
+
+### Revert the guest
+
+With the VM shut off:
+
+```bash
+virsh -c qemu:///system snapshot-list windows-eng --tree
+virsh -c qemu:///system snapshot-revert windows-eng <name>
+```
+
+Cloud licences activated after that snapshot may ask you to sign in
+again. Snapshots live inside the qcow2, so they don't protect against
+losing the disk; see [doc 13](13-collaboration-and-backup.md) for backups.
+
+### Remove everything
+
+```bash
+V="virsh -c qemu:///system"
+$V destroy windows-eng 2>/dev/null
+$V undefine windows-eng --nvram --tpm --snapshots-metadata
+sudo rm /var/lib/libvirt/images/windows-eng.qcow2
+
+# Installed by prepare-host.sh / set-cmdline. Where prepare-host replaced
+# an existing file it left <file>.bak.<timestamp>: restore that instead.
+sudo rm -f /etc/modprobe.d/vfio.conf /etc/mkinitcpio.conf.d/vfio.conf \
+    /etc/sysctl.d/99-vm-hugepages.conf /etc/conf.d/libvirt-guests \
+    /etc/libvirt/hooks/qemu /usr/local/bin/cpu-governor \
+    /etc/modules-load.d/kvmfr.conf /etc/modprobe.d/kvmfr.conf \
+    /etc/udev/rules.d/99-kvmfr.rules /etc/limine-entry-tool.d/vfio.conf
+sudo systemctl disable --now libvirt-guests.service
+sudo ufw delete allow in on virbr0
+sudo ufw route delete allow in on virbr0 out on "$UPLINK"   # $UPLINK as in §10
+rm -f ~/.config/hypr/looking-glass.lua   # and its require(...) line in hyprland.lua
+sudo mkinitcpio -P && sudo limine-update && sudo reboot
+```
+
+Also, by hand:
+
+- the `# Added by oma-eng` `cgroup_device_acl` block at the end of
+  `/etc/libvirt/qemu.conf` (from `--kvmfr`);
+- the `@libvirt-images` line in `/etc/fstab` and the subvolume itself
+  (doc 03 §2);
+- the `.desktop` launcher from doc 04 §6;
+- group membership: `sudo gpasswd -d $USER libvirt` and `kvm`.
+
+Leave LUKS `allow-discards` (§11) on: it's independent of the VM.
 
 ## Other bootloaders
 

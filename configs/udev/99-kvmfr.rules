@@ -1,0 +1,3 @@
+# Looking Glass kvmfr: readable by the kvm group so libvirt-qemu and
+# the host user running looking-glass-client can both access it.
+SUBSYSTEM=="kvmfr", OWNER="root", GROUP="kvm", MODE="0660"

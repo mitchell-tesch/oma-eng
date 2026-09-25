@@ -95,7 +95,20 @@ capturable output, so LG dies.
 Three fixes, all needed, in this order:
 
 **Fix 1 — kvmfr kernel module** (backs IVSHMEM with a kernel-managed
-region instead of `/dev/shm/*`):
+region instead of `/dev/shm/*`).
+
+Shortcut: install the module as your normal user, then let
+`prepare-host.sh` do the rest idempotently. It handles autoload, size,
+the udev rule and the `qemu.conf` ACL, and restarts libvirt only if
+`qemu.conf` changed:
+
+```bash
+yay -S looking-glass-module-dkms
+sudo scripts/prepare-host.sh --skip-packages --kvmfr
+ls -la /dev/kvmfr0                        # crw-rw---- root kvm
+```
+
+The equivalent manual steps, for reference:
 
 ```bash
 yay -S looking-glass-module-dkms

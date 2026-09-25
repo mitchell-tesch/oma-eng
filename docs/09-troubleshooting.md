@@ -1,7 +1,47 @@
 # 09 — Troubleshooting playbook
 
 The failure modes here are almost all one-time — you hit one, fix it,
-never see it again. Grouped by symptom.
+never see it again. Grouped by symptom. For a failed VM start, read
+`/var/log/libvirt/qemu/windows-eng.log` first
+([When all else fails](#when-all-else-fails)).
+
+**Sections:**
+[Host / VFIO](#host--vfio-problems) ·
+[Looking Glass](#looking-glass-problems) ·
+[Rhino / Grasshopper](#rhino--grasshopper) ·
+[Strand7](#strand7) ·
+[Guest sessions + drive letters](#guest-sessions-and-virtiofs-drive-letters) ·
+[Python](#python) ·
+[Office / Excel](#office--excel) ·
+[ETABS / SAP2000 OAPI](#csi-etabs--sap2000-oapi) ·
+[Host performance](#host-performance-regressions) ·
+[libvirt / VM management](#libvirt--vm-management) ·
+[Native Omarchy tooling](#native-omarchy-tooling-freecad--bonsai--jupyter--handcalcs) ·
+[When all else fails](#when-all-else-fails)
+
+**Find by message or symptom:**
+
+| You see | Entry |
+|---|---|
+| `Hugepagesize: 2048 kB` after a reboot | [Hugepagesize stays at 2048 kB](#hugepagesize-stays-at-2048-kb-after-set-cmdline--limine-update--reboot) |
+| `Kernel driver in use: nvidia` / `nouveau` | [Host driver claims the card](#kernel-driver-in-use-nvidia-or-nouveau-after-reboot), [Omarchy Nvidia stack](#omarchy-nvidia-driver-stack-racing-vfio-pci) |
+| `not IOMMU-safe`, dGPU shares an IOMMU group | [IOMMU group mixing](#iommu-group-mixing-nvidia-grouped-with-unrelated-devices) |
+| Device Manager *Code 43* | [Error 43](#error-43-in-windows-device-manager-on-the-nvidia-card) |
+| *device is not available for use* on start | [Audio function reset](#hdmi-audio-device-fails-to-reset-between-vm-restarts) |
+| `Cannot allocate memory` / hugepages on start | [HugePages allocation failure](#hugepages-allocation-failure) |
+| `vfio_container_dma_map … -22`, LG *Failed to locate a valid output device* | [Doc 04 §2b](04-looking-glass.md) (muxless laptop) |
+| Black Looking Glass window | [Client shows a black window](#client-shows-a-black-window) |
+| *Microsoft Basic Render Driver* / *GDI Generic* | [Rhino](#rhino-uses-microsoft-basic-render-driver), [Strand7](#graphics-opengl-preferences-reads-gdi-generic) |
+| `Y:` and `Z:` swapped | [Drive letters swap](#drive-letters-swap-between-boots-y-and-z-trade-places) |
+| COM / GUI automation fails over `ssh` | [Session 0 vs console](#ssh-windows-eng-cant-drive-excel--rhino--display-settings) |
+| `[WinError 1005]` debugging on `Z:` | [Python debugger](#debugger-fails-with-winerror-1005-on-zoma-engsrc) |
+| Office error `30094-…` | [Office install](#install-fails-with-error-30094-44-or-30094-1011-30094-4) |
+| `CS1759`, `CS0122`, `CS1501`, `0x80080005`, `RuntimeBinderException` | [ETABS / SAP2000 OAPI](#csi-etabs--sap2000-oapi) |
+| Guest stutters under load | [CPU stutters](#guest-cpu-stutters-on-scene-tumble) |
+| `virsh shutdown` never finishes | [Guest never powers off](#virsh-shutdown-returns-but-the-guest-never-powers-off) |
+| `qemu-img snapshot -d … Could not open` | [Snapshot after rename](#snapshot-revertdelete-fails-after-renaming-the-domain) |
+| `externally-managed-environment`, `USE_BREP_DATA`, Bonsai *incompatible* | [Native tooling](#native-omarchy-tooling-freecad--bonsai--jupyter--handcalcs) |
+| Host won't boot after setup / want to undo | [Doc 02 — Undo and rollback](02-host-setup.md#undo-and-rollback) |
 
 ---
 
@@ -183,9 +223,32 @@ VM), look up the `vendor-reset` kernel module.
 
 ### HDMI audio device fails to reset between VM restarts
 
-`echo 1 > /sys/bus/pci/devices/<audio-fn>/reset` before starting the VM.
-Or add a libvirt hook that does it. Nvidia's HDMI audio function is
-sometimes the culprit.
+Symptom: the guest fails to start with *device is not available for
+use* on the Nvidia audio function (desktop cards only; muxless laptops
+have no audio function). Bounce its reset line before starting the VM:
+
+```bash
+sudo scripts/prepare-host.sh --reset-audio-fn
+```
+
+That writes `1` to `/sys/bus/pci/devices/<audio-fn>/reset` for every
+Nvidia audio function bound to vfio-pci. Some cards need the whole PCIe
+root port bounced instead.
+
+### HugePages allocation failure
+
+The guest fails to start with a hugepages / `Cannot allocate memory`
+error in `/var/log/libvirt/qemu/windows-eng.log`. Compare
+`grep HugePages_Total /proc/meminfo` with the XML's `<memory>`:
+
+- Fewer pages than the guest needs: re-run `sudo scripts/set-cmdline`
+  (it derives the count from the XML) and reboot. Or shrink the guest
+  with `scripts/set-guest-memory`.
+- The kernel cmdline count is right but `/proc/meminfo` shows fewer: the
+  installed `/etc/sysctl.d/99-vm-hugepages.conf` disagrees and trims them
+  at boot (doc 02 §6). `scripts/set-guest-memory` re-syncs it.
+- Post-boot (sysctl-only) allocation failed on fragmented memory:
+  reserve at boot via the cmdline instead.
 
 ---
 
@@ -606,19 +669,24 @@ The hook is [`configs/libvirt/hooks/qemu`](../configs/libvirt/hooks/qemu)
 - If using qcow2, run `qemu-img convert` to `preallocation=metadata`
   once when the image gets big.
 
-### HugePages allocation failure
+---
 
-`dmesg` shows the guest failing to start with hugepages. Either:
+## libvirt / VM management
 
-- You didn't reserve enough hugepages at boot. Increase the
-  `hugepages=` kernel param.
-- Kernel couldn't reserve contiguous 1 GiB pages after boot (fragmented
-  memory). Reserve at boot instead of via sysctl.
+### `virsh shutdown` returns but the guest never powers off
 
-### Nvidia audio function refuses to reset
+Windows got the ACPI request but something is blocking it, usually an
+"app is preventing shutdown" screen or an unsaved-document prompt
+(Excel, Rhino, Strand7) on the Looking Glass display. `ssh` and the
+guest agent often stop answering at this point, and the SPICE/QXL
+console shows nothing because Windows draws on the dGPU / VDD.
 
-Some cards need the whole PCIe root port bounced. Libvirt hook to do it
-lives in `scripts/prepare-host.sh` under `--reset-audio-fn`.
+Open Looking Glass and answer the prompt. `virsh destroy windows-eng` is
+a hard power-off: unsaved work is lost, and it leaves the NTFS journal to
+replay and possibly a leaked qcow2 cluster (fix it with the VM off:
+`sudo qemu-img check -r leaks /var/lib/libvirt/images/windows-eng.qcow2`).
+`libvirt-guests.service` (doc 02 §9) waits `SHUTDOWN_TIMEOUT` (180 s)
+for this at host poweroff before giving up.
 
 ### Snapshot revert/delete fails after renaming the domain
 
@@ -850,9 +918,10 @@ uv run python -m ipykernel install --user --name oma-native \
 
 - `journalctl -b | tail -300`
 - `dmesg | grep -Ei 'vfio|iommu|nvidia|qemu|kvm'`
-- `virsh --connect qemu:///system domblkstat windows-eng`
-- Enable QEMU trace: add `<log file='/var/log/libvirt/qemu/windows-eng.log'/>`
-  to the domain and read it after a failed start.
+- `sudo tail -50 /var/log/libvirt/qemu/windows-eng.log` — QEMU's own
+  log, written on every start; the real error for a failed start is here.
+- `journalctl -u libvirtd --since -10min` — libvirt-side errors, and
+  hook output.
 - Ask the [Level1Techs VFIO forum](https://forum.level1techs.com/c/software/vfio/)
   — they have seen every hardware permutation.
 

@@ -7,6 +7,40 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Choose-your-path + setup checklist.** Doc 01 has a *Desktop or
+  laptop?* table (how to tell, and every step that differs for a muxless
+  laptop dGPU, with links). The README has an ordered 16-step checklist
+  with helper commands, the one required reboot, laptop-only steps,
+  snapshot points and disk sizing, and marks docs 06–13 as per-app /
+  optional. Doc 01 now says a desktop dGPU needs a monitor, dummy plug
+  or VDD for Looking Glass to capture.
+- `scripts/prepare-host.sh --kvmfr` automates the muxless-laptop
+  Looking Glass host setup (doc 04 §2b Fix 1). It installs the new
+  `configs/modules-load.d/kvmfr.conf`, `configs/modprobe.d/kvmfr.conf`
+  and `configs/udev/99-kvmfr.rules`, adds `/dev/kvmfr0` to `qemu.conf`'s
+  `cgroup_device_acl` (warns instead of editing a custom list), and
+  loads the module. Without the flag it hints when a class-0302 Nvidia
+  device is present.
+- Doc 09 navigation: section index plus a *Find by message or symptom*
+  table at the top. New *libvirt / VM management* section (stalled
+  `virsh shutdown`, snapshot-after-rename). HugePages failure moved to
+  *Host / VFIO* and rewritten around `set-cmdline`/`set-guest-memory`.
+  The duplicate audio-reset entries are merged. *When all else fails*
+  points at `/var/log/libvirt/qemu/windows-eng.log` instead of an invalid
+  `<log>` XML element.
+- `validate-config.sh` checks `#anchor` links across all docs (GitHub
+  heading slugs, code ignored).
+- Doc 02 *Undo and rollback*:
+  - boot recovery via Limine **Snapshots** / **fallback** and
+    `omarchy-snapshot restore`;
+  - undoing `set-cmdline`;
+  - giving the dGPU back to the host;
+  - guest snapshot revert;
+  - a full removal list matching what `prepare-host.sh`, `set-cmdline`
+    and doc 03/04 install.
+
+  Doc 02 §0 now takes an `omarchy-snapshot create` before any host change.
+  Linked from the README checklist and doc 09.
 - Doc 12 covering **Autodesk Revit** with **Rhino.Inside.Revit** and
   **pyRevit** installation, licence, GPU verification, API
   workflow, and cross-integration with Rhino / ETABS / Strand7 /
@@ -43,6 +77,27 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   existing `validate-config.sh` checks.
 
 ### Changed
+
+- **Template vs machine config split.** `configs/libvirt/windows-eng.xml`
+  is now a generic template only. Each machine's real config lives in
+  `configs/libvirt/windows-eng.local.xml`, which is gitignored and made
+  per doc 03 §3.
+  - `set-cmdline`, `detect-host.sh`, `prepare-host.sh` and
+    `validate-config.sh` read the local file if it exists.
+  - `set-guest-memory` and `set-guest-share` edit only the local file,
+    creating it from the template on first use. They never edit tracked
+    files.
+  - `set-guest-memory` and `prepare-host.sh` render the installed hugepages
+    sysctl drop-in with the guest's page count, instead of copying the
+    template's.
+  - `set-guest-memory --status` reports the local XML, the installed
+    drop-in, the running kernel's `hugepages=` and libvirt. Its closing
+    hint points at `set-cmdline`, not a hand-edit of `limine.conf`.
+  - `set-guest-share` pins the domain UUID before a shut-off `virsh
+    define` (fixes *already exists with uuid*). It inserts shares before
+    `</devices>` when the template's comment anchor is missing.
+  - Docs 02, 03 and 10–13 describe the workflow. Doc 13's backup table
+    notes that the local XML isn't in Git.
 
 - **Virtiofs consolidated to a single share.** `configs/libvirt/windows-eng.xml`
   now ships one `<filesystem>` block: `~/dev` (tag `dev`) at `Z:\` in
@@ -129,6 +184,10 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     `Z:\` share and all guest paths assume.
   - Doc 03 exit criteria no longer require `ssh windows-eng` (set up in
     doc 05 §6), and note the harmless NVPCF device warning on laptops.
+  - `list-pci-for-passthrough.sh` pointed IDs at the kernel cmdline
+    (the docs use `vfio.conf`), and claimed muxless laptops need nothing
+    special for Looking Glass. It now prints the `vfio.conf` line and
+    points laptops at doc 04 §2b.
 - **Hyper-V enlightenments were silently disabled.** `windows-eng.xml`
   masked the `hypervisor` CPUID bit, so Windows reported
   `HypervisorPresent = False` and ignored the entire `<hyperv>` block.
