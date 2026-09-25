@@ -19,8 +19,26 @@ Two reasonable options:
 
 **A) qcow2 image on a fast NVMe (recommended default)**
 
+On Omarchy's btrfs root, give the images directory its own subvolume
+**before** creating the disk. Otherwise it lives inside `@`, and every
+snapper pre-update snapshot pins the whole image, fragments it (the
+no-copy-on-write `+C` attribute only holds until the next snapshot),
+and a root rollback would roll back the Windows disk too.
+
 ```bash
+TOP=$(mktemp -d); sudo mount -o subvolid=5 /dev/mapper/root "$TOP"
+sudo btrfs subvolume create "$TOP/@libvirt-images"
+sudo chattr +C "$TOP/@libvirt-images"       # nodatacow for VM images
+sudo umount "$TOP"; rmdir "$TOP"
 sudo mkdir -p /var/lib/libvirt/images
+echo "UUID=$(findmnt -no UUID /) /var/lib/libvirt/images btrfs rw,relatime,compress=zstd:3,ssd,space_cache=v2,subvol=/@libvirt-images 0 0" \
+    | sudo tee -a /etc/fstab
+sudo systemctl daemon-reload && sudo mount /var/lib/libvirt/images
+```
+
+Then create the disk:
+
+```bash
 sudo qemu-img create -f qcow2 -o preallocation=metadata,cluster_size=1M \
     /var/lib/libvirt/images/windows-eng.qcow2 200G
 ```

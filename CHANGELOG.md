@@ -107,6 +107,73 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Hyper-V enlightenments were silently disabled.** `windows-eng.xml`
+  masked the `hypervisor` CPUID bit, so Windows reported
+  `HypervisorPresent = False` and ignored the entire `<hyperv>` block.
+  The mask, `<kvm><hidden/>` and `vendor_id` (only needed for NVIDIA
+  drivers older than R465) are gone; `runtime`, `stimer direct`,
+  `tlbflush` and `ipi` added; `vmx` hidden so Windows can't start a
+  slow nested hypervisor (VBS/HVCI, WSL2).
+- **libvirt qemu hook never ran and couldn't restore.** The installed
+  copy still matched `windows-cad`, and release set `schedutil`, which
+  `intel_pstate` (active mode) doesn't offer. The hook now drives
+  power-profiles-daemon (falls back to `cpu-governor`), restores the
+  previous profile on stop, and holds a `sleep:handle-lid-switch`
+  inhibitor while the guest runs: suspending with the dGPU passed
+  through kills the guest GPU. `cpu-governor` validates against
+  `scaling_available_governors`.
+- The qemu hook now confines host tasks to the CPUs outside the guest's
+  `<vcpupin>` set while the VM runs (runtime `AllowedCPUs` on
+  `user.slice`/`system.slice`/`init.scope`), derived from the domain
+  XML libvirt passes on stdin.
+- **Host poweroff hard-killed the guest.** New
+  `configs/libvirt/libvirt-guests` (ACPI shutdown, 180 s timeout);
+  `prepare-host.sh` installs it and enables `libvirt-guests.service`.
+- `scripts/launch-windows-eng` always started a second Looking Glass
+  client: `pgrep -x` only matches the 15-char comm field. Now
+  `pgrep -f`, and focus uses the Hyprland 0.56 Lua dispatcher by window
+  address (legacy `focuswindow` fallback).
+- **SSD never received TRIM.** The LUKS root blocked discards and
+  `fstrim.timer` was disabled. Doc 02 §11 enables the persistent LUKS2
+  `allow-discards` flag and `fstrim.timer`.
+- **VM disk lived inside the snapper-managed root subvolume.** Every
+  pre-update snapshot pinned and fragmented the 200 GiB qcow2, and a
+  root rollback would have rolled back the Windows disk. Doc 03 §2 now
+  puts `/var/lib/libvirt/images` on its own `@libvirt-images`
+  subvolume (nodatacow) before creating the disk.
+- **Snapshots taken before the `windows-cad` → `windows-eng` rename
+  still pointed at `windows-cad.qcow2`**, so revert would fail and
+  `snapshot-delete` orphaned data inside the image. Metadata rewritten;
+  doc 09 documents the fix-up for future renames.
+- **virtiofs `cache mode='always'` could serve stale files** to guest
+  builds after edits on the host. `windows-eng.xml` and
+  `set-guest-share` now omit `<cache>` so virtiofsd uses its default
+  `auto` (libvirt's schema only accepts `none`/`always`).
+- Doc 05 §5: keep Windows Time running (was Manual/Stopped), verify
+  `HypervisorPresent`, exclude `Z:\` from Defender, and drop OneDrive /
+  SharePoint sync folders from the Search index.
+- Doc 05 §5: guest background-load tuning with undo commands. Covers
+  Defender scan pacing (low-priority, 30% cap; real-time protection
+  kept), SysMain disabled, Delivery Optimization peer downloads off, and
+  Edge startup boost/background mode off.
+- Doc 05 §6: reserve the guest's DHCP address (`virsh net-update …
+  ip-dhcp-host`) before hard-coding it in `~/.ssh/config`.
+- `scripts/validate-config.sh`: 2 min+ → ~0.4 s. Python is compiled in
+  one interpreter with `.venv/` excluded and no `__pycache__` writes
+  (IPython `%` magics in jupytext notebooks tolerated). Shell scripts are
+  found by shebang instead of a hard-coded list (now covers
+  `launch-windows-eng`, `set-guest-share`). The doc link check ignores
+  code blocks.
+- `scripts/prepare-host.sh` installs `looking-glass.lua` on Omarchy
+  quattro's Lua Hyprland config (`.conf` otherwise) and only prints the
+  `require`/`source` hint when it's missing.
+- `windows-eng.xml` header and `<memtune>` example updated to the
+  current 32 GiB / 10 vCPU layout.
+- `windows-eng.xml`: disk reports as SSD (`rotation_rate='1'`) so
+  Windows retrims instead of defragging; `<memballoon model='none'/>`
+  (locked hugepages + VFIO can't balloon).
+- Looking Glass client: `[spice] audio = yes`, so guest audio plays on
+  the host (it previously went nowhere). Doc 04 §5.
 - **Corrected the SSH-vs-Looking-Glass session story in docs 04, 08,
   and 09.** The old claim — that VirtIO-FS maps `Z:` per interactive
   session, so plain `ssh windows-eng` can't see it and needs a `net

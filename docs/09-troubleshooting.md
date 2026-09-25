@@ -149,8 +149,12 @@ Historical Nvidia consumer-card check that got fixed in driver 465+. If
 you hit it on an old driver:
 
 1. Update to a current Studio driver.
-2. If still stuck, add KVM hidden state to the XML (already in the
-   template, but confirm it's there):
+2. If still stuck, add KVM hidden state to the XML. The template no
+   longer ships it because it isn't needed on driver 465+. Never mask
+   the `hypervisor` CPU feature to hide the VM: Windows then ignores
+   every Hyper-V enlightenment (check with
+   `(Get-CimInstance Win32_ComputerSystem).HypervisorPresent`, which
+   should be `True`):
 
    ```xml
    <features>
@@ -579,14 +583,18 @@ manual (search *cHelper.CreateObjectProgID*) for the current shape.
 
 ### Guest CPU stutters on scene tumble
 
-Almost always the CPU governor. Set `performance`:
+Almost always the CPU governor or power profile. Check that the libvirt
+hook fired (`powerprofilesctl get` should say `performance` while the
+guest runs), and that the installed `/etc/libvirt/hooks/qemu` matches
+the domain name. A hook copied before a `virsh domrename` silently does
+nothing. Manual override:
 
 ```bash
 sudo cpu-governor performance
 ```
 
-Or wire it into a libvirt qemu hook (see `scripts/cpu-governor` header
-for a copy-paste hook script).
+The hook is [`configs/libvirt/hooks/qemu`](../configs/libvirt/hooks/qemu)
+(doc 02 §9).
 
 ### Guest disk feels slow
 
@@ -610,6 +618,36 @@ for a copy-paste hook script).
 
 Some cards need the whole PCIe root port bounced. Libvirt hook to do it
 lives in `scripts/prepare-host.sh` under `--reset-audio-fn`.
+
+### Snapshot revert/delete fails after renaming the domain
+
+`virsh domrename` does not update existing snapshots. Each one keeps
+the old domain name and the old qcow2/NVRAM paths. Revert then fails,
+and `snapshot-delete` removes libvirt's record but logs `qemu-img
+snapshot -d … <old>.qcow2 … Could not open` in `journalctl -u libvirtd`,
+leaving the snapshot data orphaned inside the image (check with
+`qemu-img snapshot -U -l`).
+
+Fix the metadata (disk untouched). `--redefine` refuses a changed
+domain name, so save each record with the paths rewritten, drop the
+records child→parent, and redefine them parent→child:
+
+```bash
+V="virsh -c qemu:///system"; D=windows-eng; OLD=windows-cad
+order=$($V snapshot-list $D --name --topological)    # parents first
+cur=$($V snapshot-current $D --name)
+mkdir -p ~/snap-meta
+for s in $order; do
+  $V snapshot-dumpxml $D "$s" --security-info | sed "s/$OLD/$D/g" > ~/snap-meta/"$s".xml
+done
+for s in $(tac <<<"$order"); do $V snapshot-delete $D "$s" --metadata; done
+for s in $order; do
+  $V snapshot-create $D ~/snap-meta/"$s".xml --redefine $([[ $s == "$cur" ]] && echo --current)
+done
+```
+
+Orphans left behind by a failed delete are removed with the VM off:
+`sudo qemu-img snapshot -d <tag> /var/lib/libvirt/images/windows-eng.qcow2`.
 
 ---
 

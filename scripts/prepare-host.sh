@@ -5,9 +5,10 @@
 # Does:
 #   1. Installs the QEMU/libvirt/OVMF stack.
 #   2. Installs the vfio + mkinitcpio drop-ins from this repo (with backup).
-#   3. Installs cpu-governor helper and the libvirt qemu hook.
+#   3. Installs cpu-governor helper, the libvirt qemu hook and the
+#      libvirt-guests config (clean guest shutdown on host poweroff).
 #   4. Adds the invoking user to libvirt and kvm groups.
-#   5. Enables libvirtd + virtlogd sockets.
+#   5. Enables libvirtd + virtlogd sockets and libvirt-guests.service.
 #   6. Regenerates the initramfs.
 #   7. Warns loudly if an existing host-side Nvidia driver stack would
 #      race with vfio-pci for the dGPU (Omarchy pre-installs one).
@@ -45,7 +46,7 @@ for arg in "$@"; do
         --reset-audio-fn) RESET_AUDIO_FN=1 ;;
         --remove-nvidia)  REMOVE_NVIDIA=1 ;;
         -h|--help)
-            sed -n '2,32p' "$0"; exit 0 ;;
+            sed -n '2,34p' "$0"; exit 0 ;;
         *) echo "Unknown arg: $arg" >&2; exit 2 ;;
     esac
 done
@@ -138,6 +139,7 @@ echo "==> Configs"
 install_file "$REPO_ROOT/configs/modprobe.d/vfio.conf"       /etc/modprobe.d/vfio.conf
 install_file "$REPO_ROOT/configs/mkinitcpio.d/vfio.conf"     /etc/mkinitcpio.conf.d/vfio.conf
 install_file "$REPO_ROOT/configs/sysctl.d/99-vm-hugepages.conf" /etc/sysctl.d/99-vm-hugepages.conf
+install_file "$REPO_ROOT/configs/libvirt/libvirt-guests"     /etc/conf.d/libvirt-guests
 
 # cpu-governor helper + libvirt qemu hook. The hook is invoked by
 # libvirtd on every guest state change, so it must be executable and
@@ -162,13 +164,26 @@ if [[ -f "$REPO_ROOT/configs/libvirt/hooks/qemu" ]]; then
     fi
 fi
 if [[ -d "$REPO_ROOT/configs/hypr" && -d "${XDG_CONFIG_HOME:-$HOME/.config}/hypr" ]]; then
-    hypr_target="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/looking-glass.conf"
-    if [[ ! -f "$hypr_target" ]] || ! cmp -s "$REPO_ROOT/configs/hypr/looking-glass.conf" "$hypr_target"; then
-        run "install -D -m 644 '$REPO_ROOT/configs/hypr/looking-glass.conf' '$hypr_target'"
+    hypr_dir="${XDG_CONFIG_HOME:-$HOME/.config}/hypr"
+    # Omarchy quattro+ uses a Lua config; older Hyprland uses hyprland.conf.
+    if [[ -f "$hypr_dir/hyprland.lua" ]]; then
+        hypr_src="$REPO_ROOT/configs/hypr/looking-glass.lua"
+        hypr_main="$hypr_dir/hyprland.lua"
+        hypr_hook='require("hypr.looking-glass")'
+    else
+        hypr_src="$REPO_ROOT/configs/hypr/looking-glass.conf"
+        hypr_main="$hypr_dir/hyprland.conf"
+        hypr_hook='source = ~/.config/hypr/looking-glass.conf'
+    fi
+    hypr_target="$hypr_dir/$(basename "$hypr_src")"
+    if [[ ! -f "$hypr_target" ]] || ! cmp -s "$hypr_src" "$hypr_target"; then
+        run "install -D -m 644 '$hypr_src' '$hypr_target'"
         printf '  new %s\n' "$hypr_target"
-        printf '        Add `source = ~/.config/hypr/looking-glass.conf` to hyprland.conf\n'
     else
         printf '  ok  %s (unchanged)\n' "$hypr_target"
+    fi
+    if ! grep -qF "$hypr_hook" "$hypr_main" 2>/dev/null; then
+        printf '        Add `%s` to %s\n' "$hypr_hook" "$hypr_main"
     fi
 fi
 
@@ -234,7 +249,8 @@ for g in libvirt kvm; do
 done
 
 echo "==> Services"
-for svc in libvirtd.socket virtlogd.socket; do
+# libvirt-guests gives the guest a clean ACPI shutdown on host poweroff.
+for svc in libvirtd.socket virtlogd.socket libvirt-guests.service; do
     if systemctl is-enabled "$svc" >/dev/null 2>&1; then
         printf '  ok  %s enabled\n' "$svc"
     else

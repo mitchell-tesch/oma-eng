@@ -1,27 +1,88 @@
 #!/usr/bin/env bash
-# /etc/libvirt/hooks/qemu — swap the CPU governor when the CAD guest
-# starts and stops. Copy this file to /etc/libvirt/hooks/qemu (mkdir the
-# parent if needed), chmod +x, and libvirtd will invoke it on every
-# guest state change. See:
-#   https://libvirt.org/hooks.html
+# /etc/libvirt/hooks/qemu — host tweaks while the CAD guest runs.
 #
-# Wants `scripts/cpu-governor` installed at /usr/local/bin/cpu-governor.
+# Install: sudo install -Dm755 configs/libvirt/hooks/qemu /etc/libvirt/hooks/qemu
+# (restart libvirtd once if the file did not exist before). See
+# https://libvirt.org/hooks.html. Never call virsh from here: libvirtd
+# holds the domain lock while hooks run and would deadlock.
 #
-# Only acts on the 'windows-eng' domain so unrelated guests are left
-# alone. Adjust the domain name if you renamed it.
+# prepare: switch to max performance, remembering the previous setting.
+#          Uses power-profiles-daemon when present (Omarchy), otherwise
+#          /usr/local/bin/cpu-governor. Also confine host tasks
+#          (user.slice, system.slice, init.scope) to the CPUs NOT in the
+#          domain's <vcpupin> set, so nothing competes with the guest.
+#          QEMU itself lives in machine.slice and is unaffected.
+# started: block host sleep and logind's lid-close suspend. Suspending
+#          with the dGPU passed through leaves the guest GPU dead.
+# release: undo all of it (also runs when a start fails after prepare).
+#
+# Only acts on 'windows-eng'; adjust if you renamed the domain.
 
 domain="$1"
 action="$2"
 
 [[ "$domain" != "windows-eng" ]] && exit 0
 
+state="/run/libvirt/qemu/$domain.perf-state"
+inhibit_unit="$domain-sleep-inhibit"
+host_units=(user.slice system.slice init.scope)
+online="$(cat /sys/devices/system/cpu/online)"
+
+# "0-2,5" -> one CPU number per line
+expand_cpus() {
+    local IFS=, r
+    for r in $1; do
+        if [[ $r == *-* ]]; then seq "${r%-*}" "${r#*-}"; else echo "$r"; fi
+    done
+}
+
+# set-property takes exactly one unit per call.
+set_host_cpus() {
+    local u
+    for u in "${host_units[@]}"; do
+        systemctl set-property --runtime -- "$u" AllowedCPUs="$1"
+    done
+}
+
 case "$action" in
     prepare)
-        /usr/local/bin/cpu-governor performance
+        if command -v powerprofilesctl >/dev/null; then
+            echo "ppd $(powerprofilesctl get)" > "$state"
+            powerprofilesctl set performance
+        elif [[ -x /usr/local/bin/cpu-governor ]]; then
+            echo "gov $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)" > "$state"
+            /usr/local/bin/cpu-governor performance
+        fi
+
+        # libvirt passes the domain XML on stdin.
+        pinned="$(grep -o "<vcpupin [^>]*cpuset='[^']*'" \
+            | sed "s/.*cpuset='\([^']*\)'/\1/" \
+            | while read -r c; do expand_cpus "$c"; done | sort -un)"
+        if [[ -n $pinned ]]; then
+            host_cpus="$(expand_cpus "$online" | grep -vxF -f <(echo "$pinned") | paste -sd,)"
+            [[ -n $host_cpus ]] && set_host_cpus "$host_cpus"
+        fi
+        ;;
+    started)
+        systemd-run --quiet --collect --unit="$inhibit_unit" \
+            systemd-inhibit --what=sleep:handle-lid-switch --mode=block \
+            --who="libvirt $domain" \
+            --why="GPU is passed through to the VM; shut the VM down first" \
+            sleep infinity
         ;;
     release)
-        /usr/local/bin/cpu-governor schedutil
+        systemctl stop "$inhibit_unit" 2>/dev/null
+        set_host_cpus "$online"
+        if [[ -r "$state" ]]; then
+            read -r kind prev < "$state"
+            case "$kind" in
+                ppd) powerprofilesctl set "$prev" ;;
+                gov) /usr/local/bin/cpu-governor "$prev" ;;
+            esac
+            rm -f "$state"
+        fi
         ;;
 esac
 
+# A failing prepare hook aborts the VM start; never let a tweak do that.
 exit 0

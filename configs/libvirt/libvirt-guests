@@ -1,0 +1,22 @@
+# /etc/conf.d/libvirt-guests — read by libvirt-guests.service.
+#
+# Without this service, host shutdown/reboot SIGTERMs QEMU and Windows
+# loses power mid-flight. With it, the guest gets an ACPI shutdown and up
+# to SHUTDOWN_TIMEOUT seconds to finish before libvirt stops.
+#
+# Enable with: sudo systemctl enable --now libvirt-guests.service
+
+URIS=qemu:///system
+
+# Domain <autostart> already boots windows-eng; don't also resume guests
+# that were running at the last shutdown.
+ON_BOOT=ignore
+
+# managedsave (suspend) is refused for domains with a passed-through GPU,
+# so do a clean shutdown.
+ON_SHUTDOWN=shutdown
+
+# Windows Update's "Working on updates" can take minutes; unsaved-work
+# prompts block forever, so this also caps how long a stuck guest delays
+# host poweroff.
+SHUTDOWN_TIMEOUT=180

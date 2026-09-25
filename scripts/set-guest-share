@@ -45,9 +45,7 @@ share_block() {
     cat <<EOF
     <filesystem type='mount' accessmode='passthrough'>
       <driver type='virtiofs' queue='1024'/>
-      <binary path='/usr/lib/virtiofsd'>
-        <cache mode='always'/>
-      </binary>
+      <binary path='/usr/lib/virtiofsd'/>
       <source dir='${host_path}'/>
       <target dir='${tag}'/>
     </filesystem>
@@ -92,9 +90,7 @@ replace_share() {
                     gsub(/'"'"'[^'"'"']+'"'"'/, "'"'"'PLACEHOLDER'"'"'", buf)
                     print "    <filesystem type='"'"'mount'"'"' accessmode='"'"'passthrough'"'"'>"
                     print "      <driver type='"'"'virtiofs'"'"' queue='"'"'1024'"'"'/>"
-                    print "      <binary path='"'"'/usr/lib/virtiofsd'"'"'>"
-                    print "        <cache mode='"'"'always'"'"'/>"
-                    print "      </binary>"
+                    print "      <binary path='"'"'/usr/lib/virtiofsd'"'"'/>"
                     print "      <source dir='"'"'" host "'"'"'/>"
                     print "      <target dir='"'"'" tag "'"'"'/>"
                     print "    </filesystem>"

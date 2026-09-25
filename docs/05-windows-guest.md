@@ -150,6 +150,55 @@ If you're troubleshooting time-drift symptoms and reach for
 `useplatformclock` anyway, back it out with
 `bcdedit /deletevalue useplatformclock` before reporting the issue.
 
+Keep **Windows Time** running. It ships as Manual/Stopped on a
+non-domain install, so the clock drifts after host suspends and snapshot
+reverts, and cloud licences (Rhino Cloud Zoo, CSiCloud, Strand7 CLM)
+and TLS reject skewed clocks:
+
+```powershell
+Set-Service W32Time -StartupType Automatic; Start-Service W32Time
+w32tm /resync /force
+```
+
+Confirm the Hyper-V enlightenments are active (they are ignored if the
+XML masks the `hypervisor` CPU feature, see doc 09):
+
+```powershell
+(Get-CimInstance Win32_ComputerSystem).HypervisorPresent   # True
+```
+
+### Background load: Defender and Search on shared/synced folders
+
+- **Defender:** exclude the virtiofs share. Every file read over `Z:`
+  is otherwise scanned in the guest, which slows `dotnet build` and `uv`
+  a lot. The files are your own host-side repos:
+  `Add-MpPreference -ExclusionPath 'Z:\'`.
+- **Windows Search:** `Z:` isn't indexed by default, but OneDrive /
+  SharePoint sync folders under `C:\Users\<you>\` are, cloud-only
+  placeholders included. With a large tenant sync that keeps
+  `SearchIndexer` busy (about 1.3 vCPU measured with ~320k placeholders).
+  In *Indexing Options → Modify*, untick the sync folders. Outlook and
+  Start-menu search keep working.
+- **Defender scan pacing:** throttle scheduled scans so they don't
+  compete with solvers. Real-time and cloud protection are unchanged;
+  keep them on, since this guest holds work data.
+  `Set-MpPreference -EnableLowCpuPriority $true -ScanAvgCPULoadFactor 30`
+  (undo: `$false` / `50`).
+- **SysMain (Superfetch):** little value on an SSD-backed guest with
+  plenty of free RAM. It also drives memory compression.
+  `Stop-Service SysMain; Set-Service SysMain -StartupType Disabled`
+  (undo: `-StartupType Automatic; Start-Service SysMain`).
+- **Delivery Optimization:** no peer-to-peer update sharing. This is the same
+  setting as *Windows Update → Advanced → Delivery Optimization → Allow
+  downloads from other devices: Off*; keep `DoSvc` itself running.
+  `Set-ItemProperty 'Registry::HKEY_USERS\S-1-5-20\Software\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Settings' DownloadMode 0 -Type DWord; Restart-Service DoSvc`
+  (verify: `(Get-DOConfig).DownloadMode` → `CdnOnly`).
+- **Edge:** *Settings → System and performance → Startup boost: Off*
+  and *Continue running background extensions and apps when Microsoft
+  Edge is closed: Off*. Otherwise Edge stays resident from logon.
+- Leave `Spooler` (Bluebeam's PDF printer), `WSearch` (Outlook),
+  `ClickToRunSvc`/`UsoSvc` (updates) and the Defender services running.
+
 ## 6. SSH server for VS Code Remote
 
 You already installed OpenSSH in doc 03 §8. Add your Omarchy public key:
@@ -164,11 +213,23 @@ icacls.exe $path /grant "Administrators:F" "SYSTEM:F"
 Restart-Service sshd
 ```
 
-On the Omarchy host, add to `~/.ssh/config`:
+On the Omarchy host, pin the guest's current lease so the address can't
+change underneath the SSH config (libvirt's DHCP pool otherwise hands
+out whatever is free):
+
+```bash
+V="virsh -c qemu:///system"
+$V net-dhcp-leases default                      # note MAC + IP
+$V net-update default add ip-dhcp-host \
+  "<host mac='52:54:00:xx:xx:xx' name='windows-eng' ip='192.168.122.XX'/>" \
+  --live --config
+```
+
+Then add to `~/.ssh/config`:
 
 ```
 Host windows-eng
-    HostName 192.168.122.XX      # from `virsh net-dhcp-leases default`
+    HostName 192.168.122.XX      # the reserved address
     User mitchell                # your guest local account
     IdentityFile ~/.ssh/id_ed25519
     ForwardAgent no

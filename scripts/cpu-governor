@@ -3,40 +3,35 @@
 #
 # Usage:
 #     sudo cpu-governor performance     # for CAD/FEA use
-#     sudo cpu-governor powersave       # for idle
-#     sudo cpu-governor schedutil        # Arch default
-#     sudo cpu-governor status           # show current
+#     sudo cpu-governor powersave       # intel_pstate / amd-pstate default
+#     sudo cpu-governor schedutil       # acpi-cpufreq default
+#     sudo cpu-governor status          # show current + available
 #
-# Wire into libvirt hooks (recommended): drop this snippet into
-# /etc/libvirt/hooks/qemu (make it executable) so the governor
-# swaps automatically when the CAD VM starts/stops:
+# Only governors listed in scaling_available_governors are accepted;
+# intel_pstate in active mode offers just performance and powersave.
 #
-#     #!/usr/bin/env bash
-#     domain="$1"; action="$2"
-#     [[ "$domain" != "windows-eng" ]] && exit 0
-#     case "$action" in
-#         prepare)  /usr/local/bin/cpu-governor performance ;;
-#         release)  /usr/local/bin/cpu-governor schedutil ;;
-#     esac
+# configs/libvirt/hooks/qemu calls this around guest start/stop when
+# power-profiles-daemon is not installed.
 
 set -euo pipefail
 
 cmd="${1:-status}"
+available="$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors)"
 
 case "$cmd" in
     status)
         for c in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
             printf "%-40s %s\n" "$c" "$(cat "$c")"
         done | column -t
+        echo "available: $available"
         exit 0
         ;;
-    performance|powersave|schedutil|ondemand|conservative|userspace)
-        gov="$cmd" ;;
     *)
-        echo "Unknown governor: $cmd" >&2
-        echo "Valid: performance, powersave, schedutil, ondemand, conservative, userspace, status" >&2
-        exit 2
-        ;;
+        if [[ " $available " != *" $cmd "* ]]; then
+            echo "Governor not available: $cmd (available: $available)" >&2
+            exit 2
+        fi
+        gov="$cmd" ;;
 esac
 
 if [[ $EUID -ne 0 ]]; then

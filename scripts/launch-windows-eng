@@ -23,9 +23,16 @@ fi
 
 # LG and a SPICE viewer can't share the display port, and two client
 # instances just fight over the same shmem — focus the existing window
-# instead of spawning a second one.
-if pgrep -x looking-glass-client >/dev/null; then
-    hyprctl dispatch focuswindow "class:^(looking-glass-client)$" >/dev/null 2>&1 || true
+# instead of spawning a second one. pgrep needs -f: the process name is
+# longer than the 15-char comm field that plain/-x matching uses.
+if pgrep -f '(^|/)looking-glass-client( |$)' >/dev/null; then
+    addr="$(hyprctl clients -j 2>/dev/null \
+        | jq -r 'first(.[] | select(.class == "looking-glass-client") | .address) // empty')"
+    if [[ -n "$addr" ]]; then
+        # Lua dispatcher on Hyprland 0.56+, legacy syntax as fallback.
+        hyprctl dispatch "hl.dsp.focus({ window = \"address:$addr\" })" >/dev/null 2>&1 \
+            || hyprctl dispatch focuswindow "address:$addr" >/dev/null 2>&1 || true
+    fi
     exit 0
 fi
 

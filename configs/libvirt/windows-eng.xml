@@ -8,13 +8,15 @@
         virsh -c qemu:///system start windows-eng
 
     Layout:
-      - 24 GiB memory backed by 1 GiB hugepages (bump for big FEA / Office use)
-      - 12 vCPUs pinned to 6 physical cores + hyperthreads (adjust below)
-      - Q35 UEFI machine with OVMF, secure boot off (turn on later)
-      - virtio-scsi disk + virtio-net + virtio-serial + virtiofs share
-      - Nvidia dGPU + audio function passed through (EDIT: PCI addresses)
-      - IVSHMEM shared memory for Looking Glass
-      - Evdev keyboard/mouse passthrough with LEFTCTRL+RIGHTCTRL toggle
+      - 32 GiB memory backed by 1 GiB hugepages (scripts/set-guest-memory)
+      - 10 vCPUs pinned to 5 P-cores + their SMT siblings (adjust below)
+      - Q35 UEFI machine with OVMF + Secure Boot, TPM 2.0, Hyper-V
+        enlightenments
+      - virtio-scsi disk + virtio-net + virtio-serial + one virtiofs share
+      - Nvidia dGPU passed through (EDIT: PCI addresses)
+      - Looking Glass shared memory: <shmem> for desktop dGPUs, or the
+        kvmfr qemu:commandline block for muxless laptops (see doc 04)
+      - Optional evdev keyboard/mouse passthrough (qemu:commandline)
       - SPICE + QXL for install-time display (Looking Glass takes over later)
 -->
 <domain type='kvm' xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'>
@@ -35,8 +37,8 @@
        set hard_limit slightly above the guest memory to leave room
        for QEMU overhead.
   <memtune>
-    <hard_limit unit='KiB'>27262976</hard_limit>
-    <soft_limit unit='KiB'>25165824</soft_limit>
+    <hard_limit unit='KiB'>34603008</hard_limit>
+    <soft_limit unit='KiB'>33554432</soft_limit>
   </memtune>
   -->
   <memoryBacking>
@@ -156,15 +158,18 @@
       <vapic state='on'/>
       <spinlocks state='on' retries='8191'/>
       <vpindex state='on'/>
+      <runtime state='on'/>
       <synic state='on'/>
-      <stimer state='on'/>
+      <stimer state='on'>
+        <direct state='on'/>
+      </stimer>
       <reset state='on'/>
-      <vendor_id state='on' value='KVMKVMKVM01'/>
       <frequencies state='on'/>
+      <tlbflush state='on'/>
+      <ipi state='on'/>
     </hyperv>
-    <kvm>
-      <hidden state='on'/>
-    </kvm>
+    <!-- No <kvm><hidden/> or <vendor_id>: NVIDIA dropped its VM check in
+         driver R465, and hiding KVM gains nothing for Windows guests. -->
     <vmport state='off'/>
     <ioapic driver='kvm'/>
     <!-- Required by Secure Boot (OVMF secboot binary refuses to run
@@ -178,8 +183,12 @@
        * topoext is an AMD-only feature that gives the guest correct
          CCX/CCD topology info. 'optional' == include if the host has
          it, ignore otherwise. Safe on both Intel and AMD hosts.
-       * hypervisor bit is masked so Windows doesn't nag about running
-         under a hypervisor.
+       * The hypervisor CPUID bit must stay visible: Windows only reads
+         the Hyper-V enlightenment leaves when it is set. Masking it
+         silently disables the whole <hyperv> block above.
+       * vmx is hidden so Windows can't start its own nested hypervisor
+         (VBS/HVCI, WSL2, Hyper-V), which is very slow under KVM. Drop
+         that line if you genuinely need WSL2 inside the guest.
        Pinning topology below assumes 5 P-cores x 2 threads = 10 vCPUs
        to match the <vcpupin> block above (HP ZBook Firefly G11 defaults).
        Intel P/E hybrid CPUs (12th gen+): pin to P-cores only for
@@ -190,7 +199,7 @@
     <topology sockets='1' dies='1' cores='5' threads='2'/>
     <cache mode='passthrough'/>
     <feature policy='optional' name='topoext'/>
-    <feature policy='disable' name='hypervisor'/>
+    <feature policy='disable' name='vmx'/>
   </cpu>
 
   <clock offset='localtime'>
@@ -222,7 +231,8 @@
     <disk type='file' device='disk'>
       <driver name='qemu' type='qcow2' cache='none' io='native' discard='unmap'/>
       <source file='/var/lib/libvirt/images/windows-eng.qcow2'/>
-      <target dev='sda' bus='scsi'/>
+      <!-- rotation_rate=1: report an SSD so Windows retrims instead of defragging -->
+      <target dev='sda' bus='scsi' rotation_rate='1'/>
       <boot order='1'/>
     </disk>
 
@@ -311,11 +321,13 @@
          source tree is therefore Z:\oma-eng\src\ and sibling repos
          are Z:\<repo>\. -->
     <!-- EDIT: source dir absolute path -->
+    <!-- No <cache> element on purpose: virtiofsd then uses its default
+         'auto'. libvirt only accepts none/always here, and 'always' lets
+         the guest serve stale contents/metadata for files edited on the
+         host. -->
     <filesystem type='mount' accessmode='passthrough'>
       <driver type='virtiofs' queue='1024'/>
-      <binary path='/usr/lib/virtiofsd'>
-        <cache mode='always'/>
-      </binary>
+      <binary path='/usr/lib/virtiofsd'/>
       <source dir='/home/mzt/dev'/>
       <target dir='dev'/>
     </filesystem>
@@ -398,10 +410,13 @@
       <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1' primary='yes'/>
     </video>
 
-    <!-- Sound: intel-hda so Windows audio works before Nvidia HDMI takes over -->
+    <!-- Sound: emulated HDA, played on the host through Looking Glass's
+         SPICE audio channel ([spice] audio = yes in client.ini). -->
     <sound model='ich9'/>
 
-    <memballoon model='virtio'/>
+    <!-- No balloon: locked hugepages + a passed-through GPU can't be
+         ballooned, so the device would only add a guest driver. -->
+    <memballoon model='none'/>
   </devices>
 
   <!--

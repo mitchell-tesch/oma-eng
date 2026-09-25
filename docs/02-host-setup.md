@@ -34,9 +34,11 @@ Reboot if the kernel updated.
 installs every package this repo needs (QEMU, libvirt, virt-manager,
 edk2-ovmf, swtpm, dnsmasq, libxml2, the vfio/mkinitcpio drop-ins, and
 the matching CPU microcode), installs `cpu-governor` +
-`/etc/libvirt/hooks/qemu` so the governor swaps automatically around
-guest start/stop, drops a Hyprland Looking Glass config in
-`~/.config/hypr/looking-glass.conf` if a Hyprland config dir exists,
+`/etc/libvirt/hooks/qemu` (performance profile + sleep inhibitor while
+the guest runs) and the `libvirt-guests` config for clean guest
+shutdown, drops a Hyprland Looking Glass config in
+`~/.config/hypr/` (`looking-glass.lua` on Omarchy quattro's Lua config,
+`looking-glass.conf` on older Hyprland) if a Hyprland config dir exists,
 adds you to the `libvirt` and `kvm` groups, enables `libvirtd.socket`
 and `virtlogd.socket`, and rebuilds the initramfs.
 
@@ -356,23 +358,48 @@ one (a 3D controller with no audio silicon on the bus).
 If it says `nouveau` or `nvidia`, either the initramfs didn't rebuild, the
 IDs are wrong, or the `blacklist` lines didn't take. See doc 09.
 
-## 9. CPU governor (installed automatically by prepare-host.sh)
+## 9. CPU performance, sleep, and clean shutdown (installed by prepare-host.sh)
 
-For CAD/FEA work you want `performance` on VM cores. `prepare-host.sh`
-installed [`scripts/cpu-governor`](../scripts/cpu-governor) at
-`/usr/local/bin/cpu-governor` and
+`prepare-host.sh` installs
 [`configs/libvirt/hooks/qemu`](../configs/libvirt/hooks/qemu) at
-`/etc/libvirt/hooks/qemu`, so the governor swaps to `performance`
-when the `windows-eng` domain starts and back to `schedutil` when it
-stops — nothing else to do.
+`/etc/libvirt/hooks/qemu`. While `windows-eng` runs, it:
 
-Manual usage if you want to swap without the guest running:
+- switches power-profiles-daemon to `performance` (Omarchy ships
+  power-profiles-daemon). On hosts without it, the hook calls
+  [`scripts/cpu-governor`](../scripts/cpu-governor), installed at
+  `/usr/local/bin/cpu-governor`. The previous profile or governor is
+  restored when the guest stops.
+- confines host tasks (`user.slice`, `system.slice`, `init.scope`) to
+  the CPUs *not* listed in the domain's `<vcpupin>` block, so browsers,
+  builds and indexers can't preempt the guest's pinned P-cores. On the
+  ZBook G11 that leaves the host P-core 0 plus all E/LP-E cores
+  (`0,5,12-21`), so native renders are slower while the VM is up.
+  Runtime-only (`systemctl set-property --runtime`); undone when the
+  guest stops. Check with `systemctl show -p AllowedCPUs user.slice`.
+  On Intel hybrid laptops, `intel_lpmd` (Omarchy enables it) manages
+  the same property. Its low-power mode is forced off in every
+  power profile by default, but a restart of the service while the VM
+  is up resets the host to all CPUs until the next guest start.
+- blocks host sleep and logind's lid-close suspend. Suspending with the
+  dGPU passed through leaves the guest GPU dead on resume. Closing the
+  lid still locks the screen; shut the guest down before bagging the
+  laptop. Check with `systemd-inhibit --list`.
+
+It also installs [`configs/libvirt/libvirt-guests`](../configs/libvirt/libvirt-guests)
+at `/etc/conf.d/libvirt-guests` and enables `libvirt-guests.service`, so
+host poweroff/reboot sends the guest an ACPI shutdown (180 s timeout)
+instead of killing QEMU.
+
+Manual governor control without the guest running:
 
 ```bash
-sudo cpu-governor performance    # for CAD/FEA use
-sudo cpu-governor schedutil      # Arch default
-sudo cpu-governor status         # show current
+sudo cpu-governor performance
+sudo cpu-governor powersave      # intel_pstate default (schedutil on acpi-cpufreq)
+sudo cpu-governor status         # current + available governors
 ```
+
+`intel_pstate` in active mode (the default on modern Intel) only offers
+`performance` and `powersave`; `cpu-governor` rejects anything else.
 
 ## 10. Firewall (UFW / firewalld)
 
@@ -408,6 +435,32 @@ sudo firewall-cmd --reload
 Check which firewall is active first with
 `systemctl is-active ufw firewalld`. If both come back `inactive`, the
 guest will DHCP fine without any of this.
+
+## 11. SSD TRIM through LUKS
+
+Omarchy's full-disk encryption does not pass discards through dm-crypt
+by default, so neither the host nor the guest's `discard='unmap'` ever
+TRIMs the NVMe. Over time that degrades SSD write speed. Check:
+
+```bash
+lsblk --discard | grep crypt    # DISC-GRAN 0B = discards blocked
+```
+
+LUKS2 can store the flag in its header, so there's no kernel cmdline edit
+and the change takes effect immediately:
+
+```bash
+sudo cryptsetup refresh --allow-discards --persistent root
+sudo cryptsetup luksDump /dev/nvme0n1p2 | grep Flags    # allow-discards
+sudo systemctl enable --now fstrim.timer                # weekly
+sudo fstrim -v /                                        # first pass now
+```
+
+Trade-off: an attacker with the raw disk can see which blocks are unused
+(filesystem type and rough fill level); file contents stay encrypted.
+From the next reboot btrfs also enables `discard=async` on its own
+(kernel 6.2+ does this when the device supports discard);
+`fstrim.timer` is a cheap weekly safety net alongside it.
 
 ## Exit criteria
 

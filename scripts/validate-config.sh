@@ -32,6 +32,14 @@ pass() { printf '  \033[32m✓\033[0m  %s\n' "$*"; pass_count=$(( pass_count + 1
 fail() { printf '  \033[31m✗\033[0m  %s\n' "$*"; fails=$(( fails + 1 )); }
 skip() { printf '  \033[33m-\033[0m  %s (skipped)\n' "$*"; skips=$(( skips + 1 )); }
 
+# *.sh plus extensionless scripts (set-*, hooks/qemu, ...) with a sh/bash shebang.
+shell_scripts() {
+    local f
+    while IFS= read -r -d '' f; do
+        [[ $f == *.sh ]] || head -n1 "$f" | grep -qE '^#!.*\b(ba)?sh\b' && printf '%s\0' "$f"
+    done < <(find scripts configs -type f -print0)
+}
+
 # --- 1. XML syntax on all libvirt / hasp templates ------------------------
 echo "==> XML syntax (xmllint)"
 if command -v xmllint >/dev/null 2>&1; then
@@ -68,15 +76,13 @@ fi
 echo "==> Shell scripts (shellcheck)"
 if command -v shellcheck >/dev/null 2>&1; then
     while IFS= read -r -d '' sh; do
-        # Skip the libvirt hook — it's not intended to be sourced with
-        # our shellcheck rules; shellcheck it anyway but at info level.
         if shellcheck -S warning "$sh" >/tmp/validate-sh.err 2>&1; then
             pass "$(realpath --relative-to="$REPO_ROOT" "$sh")"
         else
             fail "$(realpath --relative-to="$REPO_ROOT" "$sh"):"
             sed 's/^/      /' /tmp/validate-sh.err
         fi
-    done < <(find scripts configs -type f \( -name '*.sh' -o -path 'scripts/cpu-governor' -o -path 'scripts/set-guest-memory' -o -path 'scripts/set-cmdline' -o -path 'configs/libvirt/hooks/qemu' \) -print0)
+    done < <(shell_scripts)
 else
     skip "shellcheck not installed (pacman -S shellcheck)"
 fi
@@ -90,13 +96,13 @@ if command -v bash >/dev/null 2>&1; then
         else
             fail "$(realpath --relative-to="$REPO_ROOT" "$sh"): $(cat /tmp/validate-bash.err)"
         fi
-    done < <(find scripts configs -type f \( -name '*.sh' -o -path 'scripts/cpu-governor' -o -path 'scripts/set-guest-memory' -o -path 'scripts/set-cmdline' -o -path 'configs/libvirt/hooks/qemu' \) -print0)
+    done < <(shell_scripts)
 else
     skip "bash not available"
 fi
 
 # --- 5. Python syntax on samples ----------------------------------------
-echo "==> Python syntax (python -m py_compile)"
+echo "==> Python syntax (compile, .venv excluded)"
 if command -v python3 >/dev/null 2>&1; then
     py=python3
 elif command -v python >/dev/null 2>&1; then
@@ -105,13 +111,25 @@ else
     py=""
 fi
 if [[ -n "$py" ]]; then
-    while IFS= read -r -d '' f; do
-        if "$py" -m py_compile "$f" 2>/tmp/validate-py.err; then
-            pass "$(realpath --relative-to="$REPO_ROOT" "$f")"
-        else
-            fail "$(realpath --relative-to="$REPO_ROOT" "$f"): $(cat /tmp/validate-py.err)"
-        fi
-    done < <(find src -name '*.py' -type f -print0)
+    # One interpreter for all files; compile() writes no __pycache__.
+    # IPython magics (%, !) in jupytext notebooks are blanked to comments.
+    py_check='
+import re, sys
+for f in sys.argv[1:]:
+    src = re.sub(r"(?m)^(\s*)([%!])", r"\1#\2", open(f, encoding="utf-8").read())
+    try:
+        compile(src, f, "exec")
+        print(f"ok\t{f}\t")
+    except SyntaxError as e:
+        print(f"fail\t{f}\t{e.msg} (line {e.lineno})")
+'
+    mapfile -d '' pyfiles < <(find src -name '*.py' -type f \
+        -not -path '*/.venv/*' -not -path '*/node_modules/*' -print0)
+    if (( ${#pyfiles[@]} )); then
+        while IFS=$'\t' read -r status f msg; do
+            if [[ $status == ok ]]; then pass "$f"; else fail "$f: $msg"; fi
+        done < <("$py" -c "$py_check" "${pyfiles[@]}")
+    fi
 else
     skip "python not available"
 fi
@@ -150,7 +168,9 @@ while IFS= read -r -d '' md; do
             fail "$(realpath --relative-to="$REPO_ROOT" "$md") -> $link"
             missing=$(( missing + 1 ))
         fi
-    done < <(grep -oE '\]\([^)]+\)' "$md" 2>/dev/null \
+    done < <(awk '/^[[:space:]]*```/ { code = !code; next } !code' "$md" \
+             | sed -E 's/`[^`]*`//g' \
+             | grep -oE '\]\([^)]+\)' 2>/dev/null \
              | sed -E 's/^\]\(([^)]+)\)$/\1/' \
              | grep -vE '^(https?://|mailto:|ftp://|ssh://|git@)' \
              | grep -vE '^#')

@@ -254,6 +254,9 @@ Key values already set in the template:
   capture). Uncomment and set `escapeKey = KEY_RIGHTALT` (or any
   convenient key) in the template if your keyboard has no Scroll Lock.
 - `[egl] vsync = no` — CAD benefits from tearing-free but low-latency.
+- `[spice] audio = yes` — guest sound (the emulated HDA device) plays
+  on the host through the SPICE channel. When a guest app opens the
+  microphone (Teams, etc.), LG prompts first (`audio:micDefault`).
 
 ## 6. Launching — Apps-menu entry (recommended over autostart)
 
