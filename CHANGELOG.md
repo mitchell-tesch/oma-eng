@@ -1,281 +1,111 @@
 # Changelog
 
 All notable changes to this repository are captured here. Format
-follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
+versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
+## [0.1.0] - 2026-09-25
 
-- **SECURITY.md: the shared `~/dev` tree.** The default read-write share
-  lets a compromised guest modify every repo under `~/dev`. That covers
-  this repo's `sudo` scripts and hooks, and each repo's `.git/config` /
-  hooks, which host `git` executes. Git's `safe.directory` doesn't help,
-  because guest writes are owned by the host user. The section lists
-  mitigations (narrower share, root steps from a non-shared clone), and
-  doc 03 §3 links to it.
-- README trademark / non-affiliation note.
-- **Choose-your-path + setup checklist.** Doc 01 has a *Desktop or
-  laptop?* table (how to tell, and every step that differs for a muxless
-  laptop dGPU, with links). The README has an ordered 16-step checklist
-  with helper commands, the one required reboot, laptop-only steps,
-  snapshot points and disk sizing, and marks docs 06–13 as per-app /
-  optional. Doc 01 now says a desktop dGPU needs a monitor, dummy plug
-  or VDD for Looking Glass to capture.
-- `scripts/prepare-host.sh --kvmfr` automates the muxless-laptop
-  Looking Glass host setup (doc 04 §2b Fix 1). It installs the new
-  `configs/modules-load.d/kvmfr.conf`, `configs/modprobe.d/kvmfr.conf`
-  and `configs/udev/99-kvmfr.rules`, adds `/dev/kvmfr0` to `qemu.conf`'s
-  `cgroup_device_acl` (warns instead of editing a custom list), and
-  loads the module. Without the flag it hints when a class-0302 Nvidia
-  device is present.
-- Doc 09 navigation: section index plus a *Find by message or symptom*
-  table at the top. New *libvirt / VM management* section (stalled
-  `virsh shutdown`, snapshot-after-rename). HugePages failure moved to
-  *Host / VFIO* and rewritten around `set-cmdline`/`set-guest-memory`.
-  The duplicate audio-reset entries are merged. *When all else fails*
-  points at `/var/log/libvirt/qemu/windows-eng.log` instead of an invalid
-  `<log>` XML element.
-- `validate-config.sh` checks `#anchor` links across all docs (GitHub
-  heading slugs, code ignored).
-- Doc 02 *Undo and rollback*:
-  - boot recovery via Limine **Snapshots** / **fallback** and
-    `omarchy-snapshot restore`;
-  - undoing `set-cmdline`;
-  - giving the dGPU back to the host;
-  - guest snapshot revert;
-  - a full removal list matching what `prepare-host.sh`, `set-cmdline`
-    and doc 03/04 install.
+First public release: a guide for running Windows CAD/FEA software in a
+KVM/QEMU guest on [Omarchy](https://omarchy.org), with the Nvidia dGPU
+passed through (VFIO) and the display shown on the host via Looking Glass.
 
-  Doc 02 §0 now takes an `omarchy-snapshot create` before any host change.
-  Linked from the README checklist and doc 09.
-- Doc 12 covering **Autodesk Revit** with **Rhino.Inside.Revit** and
-  **pyRevit** installation, licence, GPU verification, API
-  workflow, and cross-integration with Rhino / ETABS / Strand7 /
-  SpaceGass / Excel.
-- Doc 13 covering **Bluebeam Revu**, cloud storage (OneDrive,
-  Aconex, Procore, Dropbox, Autodesk Docs), VPN topology (host vs
-  guest), corporate licence servers (Autodesk NLM, Reprise, Sentinel,
-  CodeMeter, FlexNet, Tekla, Studio Prime), and a backup-strategy
-  matrix.
-- Doc 14 covering native Omarchy open-source tooling — **Bonsai**
-  (formerly BlenderBIM) with IfcOpenShell for BIM/IFC work, and
-  **Jupyter + Handcalcs** for engineering calc notebooks.
-- **SAP2000** added to doc 11 (retitled *CSi ETABS + SAP2000 +
-  SpaceGass*) — install steps, shared CSi Reprise licence pool,
-  OAPI comparison table, two-line HelloETABS→HelloSAP2000 port.
-- `src/sap2000-api/README.md` documenting the ETABS→SAP2000 port
-  pattern.
-- `CONTRIBUTING.md`, `SECURITY.md`, and this `CHANGELOG.md`.
-- `scripts/set-guest-memory` helper — atomically updates guest RAM
-  across `windows-eng.xml`, `99-vm-hugepages.conf`, and
-  `hugepages.service`; prints the `/boot/limine.conf` snippet to
-  edit by hand.
-- `scripts/set-guest-share` helper — lists / adds / removes
-  `<filesystem>` blocks in `windows-eng.xml`, hot-attaches (or
-  detaches) the PCI device on the running guest via `virsh
-  attach-device --live --config`, and prints the paired guest-side
-  `sc.exe create VirtioFsSvc-<tag>` snippet needed because
-  `virtiofs.exe` handles one tag per service instance. `--letter`
-  pins the guest drive letter (`-m Z:`) instead of leaving the
-  service to race for one (`-m *`).
-- GitHub issue templates (`.github/ISSUE_TEMPLATE/`).
-- CI now runs `dotnet restore` on `HelloSpaceGass.csproj` and
-  `uv lock --check` on every `pyproject.toml` alongside the
-  existing `validate-config.sh` checks.
+### Guide (`docs/`)
 
-### Changed
+- **Core setup (01–05):**
+  - hardware and firmware prep, with a *Desktop or laptop?* table for
+    muxless laptop dGPUs;
+  - host setup, with an *Undo and rollback* section;
+  - VM provisioning;
+  - Looking Glass;
+  - Windows guest tuning.
 
-- **Template vs machine config split.** `configs/libvirt/windows-eng.xml`
-  is now a generic template only. Each machine's real config lives in
-  `configs/libvirt/windows-eng.local.xml`, which is gitignored and made
-  per doc 03 §3.
-  - `set-cmdline`, `detect-host.sh`, `prepare-host.sh` and
-    `validate-config.sh` read the local file if it exists.
-  - `set-guest-memory` and `set-guest-share` edit only the local file,
-    creating it from the template on first use. They never edit tracked
-    files.
-  - `set-guest-memory` and `prepare-host.sh` render the installed hugepages
-    sysctl drop-in with the guest's page count, instead of copying the
-    template's.
-  - `set-guest-memory --status` reports the local XML, the installed
-    drop-in, the running kernel's `hugepages=` and libvirt. Its closing
-    hint points at `set-cmdline`, not a hand-edit of `limine.conf`.
-  - `set-guest-share` pins the domain UUID before a shut-off `virsh
-    define` (fixes *already exists with uuid*). It inserts shares before
-    `</devices>` when the template's comment anchor is missing.
-  - Docs 02, 03 and 10–13 describe the workflow. Doc 13's backup table
-    notes that the local XML isn't in Git.
+  The README has an ordered setup checklist that links every step.
+- **Per-app docs (06–07, 10–13):** Rhino 8 + Grasshopper, Strand7 R3,
+  Office/Excel, CSi ETABS + SAP2000 + SPACE GASS, Revit +
+  Rhino.Inside.Revit + pyRevit, Bluebeam and collaboration/backup. Each
+  covers licensing models that work in a VM, GPU verification, and API
+  entry points.
+- **08:** the API development workflow (host editor, guest build/debug,
+  SSH session 0 vs the console session).
+- **09:** a troubleshooting playbook with a find-by-message index.
+- **14:** native Linux tooling that needs no guest: FreeCAD + IfcOpenShell,
+  Bonsai, Jupyter + handcalcs.
 
-- **Virtiofs consolidated to a single share.** `configs/libvirt/windows-eng.xml`
-  now ships one `<filesystem>` block: `~/dev` (tag `dev`) at `Z:\` in
-  the guest. The briefly-shipped two-share layout (`src` at `Z:\`,
-  `dev` at `Y:\`) needed one Windows service per tag, both services
-  defaulted to `-m *` (first free letter counting down from `Z:`), and
-  whichever won the startup race took `Z:` — so the two letters could
-  swap between boots. Consequences:
-  - This repo's source tree is now `Z:\oma-eng\src\`, not `Z:\`.
-    Every path reference in docs 03–13, the READMEs, `.gitignore`, and
-    `HelloETABS/Program.cs` rewritten accordingly. Sibling repos are
-    `Z:\<repo>\`.
-  - The guest's *VirtIO-FS Service* must be pinned with
-    `-t dev -m Z:` (doc 03 §6); the `VirtioFsSvc-Dev` companion
-    service is deleted.
-  - Removes an incidental hazard: the old layout exported the same
-    subtree through two independent `virtiofsd` processes, both with
-    `cache mode='always'`.
-- **Repository renamed** from `rhino-omarchy` to `oma-eng`
-  (Omarchy for engineering). All README / doc / csproj metadata /
-  AssemblyInfo GitHub URLs / virtiofs paths updated.
-- `configs/libvirt/windows-eng.xml`:
-  - `<uuid>` element removed — libvirt now auto-generates one at
-    `virsh define` time instead of accepting an all-zero placeholder.
-  - `<vcpu>` and `<cputune>` blocks commented out with a big banner
-    directing users to `scripts/detect-host.sh --vcpupin`. Domain
-    now fails to define until the user pastes in a topology-correct
-    block, rather than silently pinning to wrong host cores.
-- `src/etabs-api/csharp/HelloETABS/Program.cs` — every late-bound
-  COM call now passes the full argument list explicitly (dynamic
-  invocation does not honour type-library defaults). Affected:
-  `ApplicationStart`, `PointObj.AddCartesian`, `PointObj.SetRestraint`.
-- `src/strand7-api/csharp/HelloStrand7/HelloStrand7.cs` — moved into
-  its own subfolder for parity with the other C# samples;
-  `SetDllDirectory` switched to `CharSet.Unicode` so non-ASCII
-  `STRAND7_DIR` values work.
-- `scripts/prepare-host.sh` — removed the `2>/dev/null || true`
-  swallow on the mkinitcpio drop-in install so real errors surface.
-- Excel GPU-check menu path in README and doc 10 corrected from
-  *File ▸ Account ▸ About Excel* to
-  *File ▸ Options ▸ Advanced ▸ Display*.
-- Doc 04 Looking Glass version guidance softened from a hard `B7-rc1`
-  pin to `<version>` placeholder plus "match host client and guest
-  host-app" instructions.
-- Doc 10 Office install now points at `winget search Microsoft.Office`
-  + the Office Deployment Tool rather than pinning a specific package
-  ID.
-- Doc 06 gained a "if you're on Rhino 9" retarget note (change
-  `net7.0-windows` → `net8.0-windows`, `RhinoCommon 8.*-*` → `9.*-*`).
-- Doc 07 gained an explicit hot-attach recipe for
-  `configs/libvirt/hasp-dongle.xml`.
-- `src/office-integration/python/strand7_to_excel.py` — dead
-  `try / finally: pass` removed; buffer size hoisted to
-  `ERR_BUF_SIZE` constant.
-- `src/strand7-api/python/hello_strand7.py` and
-  `src/strand7-api/csharp/HelloStrand7/HelloStrand7.cs` — 256-byte
-  buffer hoisted to `ERR_BUF_SIZE` / `ErrBufSize` constants.
-- `scripts/detect-host.sh` `-h/--help` line range corrected to match
-  the actual header end (lines 2-13, not 2-17).
-- `.gitignore` — added Grasshopper working artefacts (`*.gh_temp`,
-  `AutoSave*`, `GH_TEMP*`, `*.rhl`, `*.3dmbak`, `*.gh.bak`).
+### Host tooling (`scripts/`)
 
-### Fixed
+- `prepare-host.sh`: idempotent host setup. It covers packages, vfio drop-ins,
+  the libvirt hook, `libvirt-guests`, groups and initramfs, and warns when
+  `vfio.conf` IDs match no device. `--kvmfr` handles the Looking Glass
+  kvmfr setup for muxless laptops.
+- `set-cmdline`: IOMMU + hugepages on the kernel command line (Omarchy
+  Limine drop-in, with systemd-boot/GRUB fallbacks). It reads the page
+  count from the guest XML and refuses to starve the host.
+- `set-guest-memory` and `set-guest-share`: change guest RAM or virtiofs
+  shares, and sync the local XML, sysctl drop-in and libvirt.
+- `detect-host.sh`, `check-iommu.sh`, `list-pci-for-passthrough.sh` and
+  `list-evdev-for-passthrough.sh` inspect the host; `detect-host.sh
+  --vcpupin` generates CPU pinning.
+- `install-looking-glass.sh`, `launch-windows-eng` (start the VM and open
+  or focus Looking Glass) and `cpu-governor`.
+- `validate-config.sh` checks XML, shell (bash -n + shellcheck), Python,
+  `.csproj` and every doc link and `#anchor`. It runs in CI.
 
-- **Fresh-setup blockers from a new-user review:**
-  - Hugepage count now comes from the template's `<memory>` (32 GiB).
-    `set-cmdline`, `detect-host.sh` and `prepare-host.sh` hard-coded 24,
-    so a fresh host reserved too few pages and the VM wouldn't start.
-    `set-cmdline` refuses counts that leave the host < 8 GiB. The README
-    now states host RAM needs (≥ 48 GB for the 32 GiB guest; shrink
-    first on smaller hosts).
-  - Evdev `input-linux` args ship commented out. They were active with
-    `CHANGEME` paths, so the first `virsh start` failed. Doc 04 §8 is
-    now opt-in.
-  - Template/doc values tied to the author's machine: the virtiofs
-    source is `/home/CHANGEME/dev`; the `vfio.conf` ID is labelled as an
-    example, and `prepare-host.sh` warns when its IDs match no PCI device;
-    doc 02's exit check is `lspci -nnk -d 10de:`; doc 04's `.desktop`
-    entry uses `$HOME`; doc 05's SSH `User` is a placeholder.
-  - ISOs live in `/var/lib/libvirt/images/iso/` (QEMU can't read
-    Omarchy's mode-700 home directory) and are moved in after the
-    subvolume is mounted.
-  - README/doc 02 say to clone to `~/dev/oma-eng`, which the single
-    `Z:\` share and all guest paths assume.
-  - Doc 03 exit criteria no longer require `ssh windows-eng` (set up in
-    doc 05 §6), and note the harmless NVPCF device warning on laptops.
-  - `list-pci-for-passthrough.sh` pointed IDs at the kernel cmdline
-    (the docs use `vfio.conf`), and claimed muxless laptops need nothing
-    special for Looking Glass. It now prints the `vfio.conf` line and
-    points laptops at doc 04 §2b.
-- **Hyper-V enlightenments were silently disabled.** `windows-eng.xml`
-  masked the `hypervisor` CPUID bit, so Windows reported
-  `HypervisorPresent = False` and ignored the entire `<hyperv>` block.
-  The mask, `<kvm><hidden/>` and `vendor_id` (only needed for NVIDIA
-  drivers older than R465) are gone; `runtime`, `stimer direct`,
-  `tlbflush` and `ipi` added; `vmx` hidden so Windows can't start a
-  slow nested hypervisor (VBS/HVCI, WSL2).
-- **libvirt qemu hook never ran and couldn't restore.** The installed
-  copy still matched `windows-cad`, and release set `schedutil`, which
-  `intel_pstate` (active mode) doesn't offer. The hook now drives
-  power-profiles-daemon (falls back to `cpu-governor`), restores the
-  previous profile on stop, and holds a `sleep:handle-lid-switch`
-  inhibitor while the guest runs: suspending with the dGPU passed
-  through kills the guest GPU. `cpu-governor` validates against
-  `scaling_available_governors`.
-- The qemu hook now confines host tasks to the CPUs outside the guest's
-  `<vcpupin>` set while the VM runs (runtime `AllowedCPUs` on
-  `user.slice`/`system.slice`/`init.scope`), derived from the domain
-  XML libvirt passes on stdin.
-- **Host poweroff hard-killed the guest.** New
-  `configs/libvirt/libvirt-guests` (ACPI shutdown, 180 s timeout);
-  `prepare-host.sh` installs it and enables `libvirt-guests.service`.
-- `scripts/launch-windows-eng` always started a second Looking Glass
-  client: `pgrep -x` only matches the 15-char comm field. Now
-  `pgrep -f`, and focus uses the Hyprland 0.56 Lua dispatcher by window
-  address (legacy `focuswindow` fallback).
-- **SSD never received TRIM.** The LUKS root blocked discards and
-  `fstrim.timer` was disabled. Doc 02 §11 enables the persistent LUKS2
-  `allow-discards` flag and `fstrim.timer`.
-- **VM disk lived inside the snapper-managed root subvolume.** Every
-  pre-update snapshot pinned and fragmented the 200 GiB qcow2, and a
-  root rollback would have rolled back the Windows disk. Doc 03 §2 now
-  puts `/var/lib/libvirt/images` on its own `@libvirt-images`
-  subvolume (nodatacow) before creating the disk.
-- **Snapshots taken before the `windows-cad` → `windows-eng` rename
-  still pointed at `windows-cad.qcow2`**, so revert would fail and
-  `snapshot-delete` orphaned data inside the image. Metadata rewritten;
-  doc 09 documents the fix-up for future renames.
-- **virtiofs `cache mode='always'` could serve stale files** to guest
-  builds after edits on the host. `windows-eng.xml` and
-  `set-guest-share` now omit `<cache>` so virtiofsd uses its default
-  `auto` (libvirt's schema only accepts `none`/`always`).
-- Doc 05 §5: keep Windows Time running (was Manual/Stopped), verify
-  `HypervisorPresent`, exclude `Z:\` from Defender, and drop OneDrive /
-  SharePoint sync folders from the Search index.
-- Doc 05 §5: guest background-load tuning with undo commands. Covers
-  Defender scan pacing (low-priority, 30% cap; real-time protection
-  kept), SysMain disabled, Delivery Optimization peer downloads off, and
-  Edge startup boost/background mode off.
-- Doc 05 §6: reserve the guest's DHCP address (`virsh net-update …
-  ip-dhcp-host`) before hard-coding it in `~/.ssh/config`.
-- `scripts/validate-config.sh`: 2 min+ → ~0.4 s. Python is compiled in
-  one interpreter with `.venv/` excluded and no `__pycache__` writes
-  (IPython `%` magics in jupytext notebooks tolerated). Shell scripts are
-  found by shebang instead of a hard-coded list (now covers
-  `launch-windows-eng`, `set-guest-share`). The doc link check ignores
-  code blocks.
-- `scripts/prepare-host.sh` installs `looking-glass.lua` on Omarchy
-  quattro's Lua Hyprland config (`.conf` otherwise) and only prints the
-  `require`/`source` hint when it's missing.
-- `windows-eng.xml` header and `<memtune>` example updated to the
-  current 32 GiB / 10 vCPU layout.
-- `windows-eng.xml`: disk reports as SSD (`rotation_rate='1'`) so
-  Windows retrims instead of defragging; `<memballoon model='none'/>`
-  (locked hugepages + VFIO can't balloon).
-- Looking Glass client: `[spice] audio = yes`, so guest audio plays on
-  the host (it previously went nowhere). Doc 04 §5.
-- **Corrected the SSH-vs-Looking-Glass session story in docs 04, 08,
-  and 09.** The old claim — that VirtIO-FS maps `Z:` per interactive
-  session, so plain `ssh windows-eng` can't see it and needs a `net
-  use` workaround — is wrong. `virtiofs.exe` runs as LocalSystem and
-  publishes the mount into the global DosDevices namespace, so `Z:`
-  resolves from every session. The real split is **Windows session 0
-  vs the console session**: `sshd` (and therefore VS Code Remote-SSH)
-  runs in session 0, which has no desktop, while Looking Glass shows
-  session 1. Filesystem and build work is fine over plain SSH; only
-  desktop-bound work (GUI apps, COM against a running instance,
-  display settings) needs a Looking Glass PowerShell.
-- Broken Omarchy manual link in doc 10
-  (`learn.omacom.io/2/the-omarchy-manual/28-windows-vm` → 
-  `omarchy.org/manual/windows-vm`).
-- `windows-eng.xml` XML comment could not contain `--vcpupin` inline
-  (double-hyphen disallowed inside XML comments); reworded to prose.
+### Configuration (`configs/`)
+
+- **`libvirt/windows-eng.xml`**, a generic domain template. Each machine
+  keeps its real config in a gitignored `windows-eng.local.xml`, which
+  every script prefers. The template sets up:
+  - 1 GiB hugepages, Q35 + OVMF Secure Boot and TPM 2.0;
+  - Hyper-V enlightenments, with the hypervisor bit visible and `vmx`
+    hidden;
+  - virtio-scsi on an SSD-flagged disk, with no balloon;
+  - one virtiofs share (`~/dev` → `Z:\`).
+- **`libvirt/hooks/qemu`** runs while the guest is up. It switches the
+  power profile to performance, blocks host sleep and lid suspend, and
+  confines host tasks to the CPUs outside the guest's pinning. All three
+  are undone on stop.
+- `libvirt/libvirt-guests`: clean ACPI guest shutdown on host poweroff.
+- vfio, mkinitcpio, hugepages sysctl, kvmfr and udev drop-ins, the Looking
+  Glass client config (with SPICE audio), and Hyprland window rules in
+  Lua (quattro) and `.conf` form.
+
+### Samples (`src/`)
+
+- Rhino plugin (`HelloRhino`) and Grasshopper component (`HelloGh`).
+- Strand7 C# + Python, ETABS C# OAPI (`HelloETABS`), and a SAP2000 port
+  guide.
+- SPACE GASS REST (C# + Python).
+- Excel via xlwings and a Rhino→Excel plugin.
+- IFC column dump and a handcalcs beam-capacity notebook.
+
+Python samples use `uv` with committed lockfiles. The C# samples ship
+VS Code launch configs where they apply.
+
+### Project
+
+- `SECURITY.md` threat model, including the risks of the read-write
+  `~/dev` share. `CONTRIBUTING.md`, issue templates, and a GitHub
+  Actions workflow: `validate-config.sh`, `uv lock --check`, `dotnet
+  restore`.
+
+### Known limitations
+
+- Verified end-to-end on one machine: an HP ZBook Firefly G11
+  (Core Ultra 7 165H, RTX A500 Laptop, muxless). The desktop dGPU path
+  follows standard VFIO practice and is documented, but hasn't been
+  re-verified for this release.
+- The template's `<vcpupin>` block is for that 165H. Regenerate it with
+  `scripts/detect-host.sh --vcpupin` on any other CPU.
+- Written against Omarchy quattro 4.x with Limine. Other Arch setups and
+  bootloaders are covered by fallback notes, not tested.
+- Windows-only C# samples (the Rhino/Grasshopper ones) aren't built in
+  CI; there is no Windows runner.
+- Tested with Omarchy 4.0.4, Linux 7.2, Hyprland 0.56, QEMU 11.1,
+  libvirt 12.7, Looking Glass B7, Windows 11 25H2, Rhino 8 SR35,
+  Strand7 R3.1, ETABS 23, SAP2000 26 and SPACE GASS 14.5.
+
+[Unreleased]: https://github.com/mitchell-tesch/oma-eng/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/mitchell-tesch/oma-eng/releases/tag/v0.1.0
