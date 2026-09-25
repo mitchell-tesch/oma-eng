@@ -32,8 +32,8 @@ the VM changes; Office is just another Windows app.
 - You want a single seamless Looking Glass window for all your
   Windows work.
 
-**Cost:** RAM. Bump the guest to 24 GiB (this repo's default) or
-32 GiB if you routinely open large workbooks. Use
+**Cost:** RAM. Rhino + Strand7 + Excel needs about 24 GiB; the template
+ships 32 GiB, which also covers large workbooks. Use
 [`scripts/set-guest-memory <GiB>`](../scripts/set-guest-memory) to
 retarget [`configs/libvirt/windows-eng.xml`](../configs/libvirt/windows-eng.xml),
 [`configs/sysctl.d/99-vm-hugepages.conf`](../configs/sysctl.d/99-vm-hugepages.conf),

@@ -53,11 +53,14 @@ result inside a Hyprland window.
 - Integrated GPU driving the Omarchy desktop
   (Intel iGPU on `i915` **or** AMD iGPU on `amdgpu` — both work identically)
 - **Nvidia dGPU** dedicated to the guest (Turing / Ampere / Ada tested paths)
-- ≥ 32 GB RAM (24 GB guest for Rhino + Strand7 + Excel is the repo default;
-  bump to 32 GB guest if you add ETABS, 40+ GB if you also run Revit — see
+- RAM: the template guest is **32 GiB** (Rhino + Strand7 + Excel + ETABS),
+  reserved as hugepages at boot even while the VM is off. Plan for
+  **≥ 48 GB host RAM** (64 GB comfortable). On a 32 GB host, shrink the
+  guest to 16–20 GiB with `scripts/set-guest-memory` before doc 02's
+  `set-cmdline`. 40+ GiB guest if you also run Revit — see
   [docs/10-office-integration.md](docs/10-office-integration.md),
   [docs/11-etabs-and-spacegass.md](docs/11-etabs-and-spacegass.md), and
-  [docs/12-revit-and-rhino-inside.md](docs/12-revit-and-rhino-inside.md))
+  [docs/12-revit-and-rhino-inside.md](docs/12-revit-and-rhino-inside.md)
 - Fast SSD/NVMe for the guest image (or a whole spare NVMe passed through)
 - Valid Windows 11 license, valid app licences (Rhino, Strand7, ETABS,
   SAP2000, SpaceGass, Revit, Bluebeam Revu — see doc 11 for
@@ -95,6 +98,14 @@ seamless display integration.
 
 Follow the docs in order — each one leaves the system in a verifiable state
 before the next one begins.
+
+**First, clone to `~/dev/oma-eng`.** The guest sees the host's whole
+`~/dev` tree as `Z:\` (one virtiofs share), and every guest path in the
+docs assumes this repo is at `Z:\oma-eng\`:
+
+```bash
+mkdir -p ~/dev && git clone <this-repo-url> ~/dev/oma-eng && cd ~/dev/oma-eng
+```
 
 1. [Hardware & BIOS prep](docs/01-hardware-prep.md)
 2. [Host (Omarchy) preparation](docs/02-host-setup.md)

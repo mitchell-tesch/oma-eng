@@ -107,6 +107,28 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Fresh-setup blockers from a new-user review:**
+  - Hugepage count now comes from the template's `<memory>` (32 GiB).
+    `set-cmdline`, `detect-host.sh` and `prepare-host.sh` hard-coded 24,
+    so a fresh host reserved too few pages and the VM wouldn't start.
+    `set-cmdline` refuses counts that leave the host < 8 GiB. The README
+    now states host RAM needs (≥ 48 GB for the 32 GiB guest; shrink
+    first on smaller hosts).
+  - Evdev `input-linux` args ship commented out. They were active with
+    `CHANGEME` paths, so the first `virsh start` failed. Doc 04 §8 is
+    now opt-in.
+  - Template/doc values tied to the author's machine: the virtiofs
+    source is `/home/CHANGEME/dev`; the `vfio.conf` ID is labelled as an
+    example, and `prepare-host.sh` warns when its IDs match no PCI device;
+    doc 02's exit check is `lspci -nnk -d 10de:`; doc 04's `.desktop`
+    entry uses `$HOME`; doc 05's SSH `User` is a placeholder.
+  - ISOs live in `/var/lib/libvirt/images/iso/` (QEMU can't read
+    Omarchy's mode-700 home directory) and are moved in after the
+    subvolume is mounted.
+  - README/doc 02 say to clone to `~/dev/oma-eng`, which the single
+    `Z:\` share and all guest paths assume.
+  - Doc 03 exit criteria no longer require `ssh windows-eng` (set up in
+    doc 05 §6), and note the harmless NVPCF device warning on laptops.
 - **Hyper-V enlightenments were silently disabled.** `windows-eng.xml`
   masked the `hypervisor` CPUID bit, so Windows reported
   `HypervisorPresent = False` and ignored the entire `<hyperv>` block.

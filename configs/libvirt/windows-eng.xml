@@ -53,7 +53,7 @@
   <!-- Memory sizing:
        * 16 GiB minimum (Rhino only, small Grasshopper defs)
        * 24 GiB comfortable floor for Rhino + Strand7 + Excel/Office
-       * 32 GiB+ if you routinely open large FEA models with parallel
+       * 32 GiB (shipped) for ETABS / large FEA models with parallel
          solvers, or big xlsx dashboards driven by Interop.Excel
        * 40+ GiB if Revit joins the daily stack (see docs/12).
        Use scripts/set-guest-memory <GiB> to retarget this element,
@@ -240,7 +240,7 @@
     <!-- EDIT: source file path -->
     <disk type='file' device='cdrom'>
       <driver name='qemu' type='raw'/>
-      <source file='/home/CHANGEME/vm-iso/Win11_23H2_English_x64.iso'/>
+      <source file='/var/lib/libvirt/images/iso/Win11_CHANGEME_x64.iso'/>
       <target dev='sdb' bus='sata'/>
       <readonly/>
       <boot order='2'/>
@@ -250,7 +250,7 @@
     <!-- EDIT: source file path -->
     <disk type='file' device='cdrom'>
       <driver name='qemu' type='raw'/>
-      <source file='/home/CHANGEME/vm-iso/virtio-win.iso'/>
+      <source file='/var/lib/libvirt/images/iso/virtio-win.iso'/>
       <target dev='sdc' bus='sata'/>
       <readonly/>
     </disk>
@@ -328,7 +328,7 @@
     <filesystem type='mount' accessmode='passthrough'>
       <driver type='virtiofs' queue='1024'/>
       <binary path='/usr/lib/virtiofsd'/>
-      <source dir='/home/mzt/dev'/>
+      <source dir='/home/CHANGEME/dev'/>
       <target dir='dev'/>
     </filesystem>
 
@@ -436,10 +436,15 @@
       Glass B7 host-app and the Virtual Display Driver (VDD).
   -->
   <qemu:commandline>
+    <!-- Evdev passthrough (optional, doc 04 section 8). Off by default:
+         Looking Glass forwards input over SPICE, and a wrong by-id path
+         makes the domain fail to start. Replace both paths with the
+         output of scripts/list-evdev-for-passthrough.sh, then uncomment.
     <qemu:arg value='-object'/>
     <qemu:arg value='input-linux,id=kbd1,evdev=/dev/input/by-id/usb-CHANGEME-event-kbd,grab_all=on,repeat=on'/>
     <qemu:arg value='-object'/>
     <qemu:arg value='input-linux,id=mouse1,evdev=/dev/input/by-id/usb-CHANGEME-event-mouse'/>
+    -->
     <!-- LG kvmfr overrides (muxless laptop dGPU). Uncomment as a
          unit; see doc 04 §2b for what each line does.
          X-PciMmio64Mb=32768 caps OVMF's 64-bit BAR window at 32 GiB

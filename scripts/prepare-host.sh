@@ -137,6 +137,14 @@ fi
 
 echo "==> Configs"
 install_file "$REPO_ROOT/configs/modprobe.d/vfio.conf"       /etc/modprobe.d/vfio.conf
+vfio_ids="$(sed -n 's/^options vfio-pci ids=\([^ ]*\).*/\1/p' "$REPO_ROOT/configs/modprobe.d/vfio.conf")"
+for id in ${vfio_ids//,/ }; do
+    if [[ -z "$(lspci -n -d "$id" 2>/dev/null)" ]]; then
+        printf '  WARN vfio.conf ids=%s: no PCI device %s on this host.\n' "$vfio_ids" "$id"
+        printf '       Put your IDs from scripts/list-pci-for-passthrough.sh 10de into\n'
+        printf '       configs/modprobe.d/vfio.conf and re-run this script.\n'
+    fi
+done
 install_file "$REPO_ROOT/configs/mkinitcpio.d/vfio.conf"     /etc/mkinitcpio.conf.d/vfio.conf
 install_file "$REPO_ROOT/configs/sysctl.d/99-vm-hugepages.conf" /etc/sysctl.d/99-vm-hugepages.conf
 install_file "$REPO_ROOT/configs/libvirt/libvirt-guests"     /etc/conf.d/libvirt-guests
@@ -300,7 +308,7 @@ echo
 echo "     Or manually edit /etc/kernel/cmdline (Omarchy quattro default)"
 echo "     and append:"
 echo
-echo "     $iommu_param iommu=pt default_hugepagesz=1G hugepagesz=1G hugepages=24"
+echo "     $iommu_param iommu=pt default_hugepagesz=1G hugepagesz=1G hugepages=$(( $(sed -n "s|.*<memory unit='KiB'>\([0-9]\+\)</memory>.*|\1|p" "$REPO_ROOT/configs/libvirt/windows-eng.xml" | head -n1) / 1048576 ))"
 echo
 echo "     Then rebuild the UKI + limine.conf: sudo limine-update"
 echo "  2. Reboot."

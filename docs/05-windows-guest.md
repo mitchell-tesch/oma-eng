@@ -230,7 +230,7 @@ Then add to `~/.ssh/config`:
 ```
 Host windows-eng
     HostName 192.168.122.XX      # the reserved address
-    User mitchell                # your guest local account
+    User CHANGEME                # your guest local account
     IdentityFile ~/.ssh/id_ed25519
     ForwardAgent no
 ```

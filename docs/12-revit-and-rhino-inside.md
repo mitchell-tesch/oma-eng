@@ -42,8 +42,8 @@ Revit is memory-hungry. Extend the ladder from
 | Apps you routinely run at once | Guest RAM |
 |---|---|
 | Rhino only | 16 GiB |
-| Rhino + Strand7 + Excel (repo default) | 24 GiB |
-| + ETABS | 32 GiB |
+| Rhino + Strand7 + Excel | 24 GiB |
+| + ETABS (template default) | 32 GiB |
 | + Revit (typical project ~200 MB .rvt) | 40 GiB |
 | + Revit large model (1+ GB .rvt, cloud workshared) | 48–64 GiB |
 | + Rhino.Inside.Revit active + Grasshopper canvas | +2–4 GiB on top |

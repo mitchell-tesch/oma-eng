@@ -21,11 +21,12 @@ which composes the UKI cmdline from `KERNEL_CMDLINE[default]` in
 `/etc/limine-entry-tool.d/*.conf`. Editing `/etc/kernel/cmdline` on
 this stack is a silent no-op.
 
-Fix — add a drop-in that appends the VFIO tokens:
+Fix — add a drop-in that appends the VFIO tokens (`hugepages=` = your
+guest RAM in GiB):
 
 ```bash
 sudo tee /etc/limine-entry-tool.d/vfio.conf > /dev/null <<'EOF'
-KERNEL_CMDLINE[default]+=" intel_iommu=on iommu=pt default_hugepagesz=1G hugepagesz=1G hugepages=24"
+KERNEL_CMDLINE[default]+=" intel_iommu=on iommu=pt default_hugepagesz=1G hugepagesz=1G hugepages=32"
 EOF
 
 # Confirm the composed cmdline before rebuilding:

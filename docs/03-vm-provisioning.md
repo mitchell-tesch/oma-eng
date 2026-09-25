@@ -1,13 +1,16 @@
 # 03 — VM provisioning
 
 Goal: create a Windows 11 guest with the Nvidia dGPU passed through, CPU
-pinning + hugepages, virtio devices, virtiofs share for the source tree,
-and evdev hotkey input passthrough. We don't wire up Looking Glass yet —
+pinning + hugepages, virtio devices and a virtiofs share for the source
+tree. We don't wire up Looking Glass yet —
 that's [04](04-looking-glass.md). For the install we use SPICE.
 
 ## 1. Downloads
 
-Put these in `~/vm-iso/`:
+Download these anywhere (e.g. `~/Downloads`). They move into
+`/var/lib/libvirt/images/iso/` after §2 creates that subvolume: QEMU runs
+as `libvirt-qemu` and can't read a mode-700 home directory, which is
+Omarchy's default.
 
 - **Windows 11 ISO** — from Microsoft's official download page.
 - **virtio-win.iso** — from Fedora:
@@ -36,11 +39,13 @@ echo "UUID=$(findmnt -no UUID /) /var/lib/libvirt/images btrfs rw,relatime,compr
 sudo systemctl daemon-reload && sudo mount /var/lib/libvirt/images
 ```
 
-Then create the disk:
+Then create the disk and move the ISOs in:
 
 ```bash
 sudo qemu-img create -f qcow2 -o preallocation=metadata,cluster_size=1M \
     /var/lib/libvirt/images/windows-eng.qcow2 200G
+sudo install -d /var/lib/libvirt/images/iso
+sudo mv ~/Downloads/Win11_*.iso ~/Downloads/virtio-win*.iso /var/lib/libvirt/images/iso/
 ```
 
 **B) Dedicated NVMe passthrough** — pass the block device directly for
@@ -61,9 +66,11 @@ Placeholders to change (search for `EDIT:` for XML-comment markers and
   auto-generates one at `virsh define` time. If you need to pin the
   UUID (licence lock, Windows activation ID) add it back with
   `uuidgen`.
-- **Memory** — must match what you reserved in hugepages. Repo default
-  is 24 GiB (Rhino + Strand7 + Excel/Office). Use 16 GiB for Rhino-only
-  work, 32 GiB+ for heavy FEA or large Excel dashboards. See
+- **Memory** — the template ships 32 GiB, and `set-cmdline` (doc 02)
+  reserved the same number of hugepages from it. To change it, run
+  `scripts/set-guest-memory <GiB>`, which updates the XML, sysctl drop-in and
+  service together. Use 16 GiB for Rhino-only work, 24 GiB for Rhino +
+  Strand7 + Excel, 32 GiB for heavy FEA / ETABS, 40+ for Revit. See
   [10 — Office integration](10-office-integration.md).
 - **CPU pinning** — the shipped XML has a pinning block filled in for
   the machine it was last generated on. Regenerate one for your host:
@@ -92,7 +99,8 @@ Placeholders to change (search for `EDIT:` for XML-comment markers and
 - **Disk source path** — to the qcow2 you just created.
 - **ISO paths** — the Windows ISO and virtio-win.iso for install.
 - **Virtiofs source** — the shipped XML has one `<filesystem>` block.
-  Point its `<source dir='...'/>` at `~/dev` (tag `dev`). It appears as
+  Replace `/home/CHANGEME/dev` in its `<source dir='...'/>` with the
+  absolute path of your `~/dev` (libvirt doesn't expand `~`; tag `dev`). It appears as
   `Z:` in the guest, so this repo's source tree is
   `Z:\oma-eng\src\<subproject>` (what the walkthroughs in doc 06
   onward reference) and any sibling repo is `Z:\<repo>\`.
@@ -105,9 +113,13 @@ Placeholders to change (search for `EDIT:` for XML-comment markers and
   [`scripts/set-guest-share`](../scripts/set-guest-share) edits the XML
   and hot-attaches / detaches the device — always pass `--letter` so
   nothing races again.
-- **Evdev keyboard + mouse paths** — the `<qemu:commandline>` block at
-  the bottom of the XML has two `evdev=/dev/input/by-id/usb-CHANGEME-…`
-  entries. Only USB HID devices have stable `/dev/input/by-id/`
+- **Evdev keyboard + mouse (optional, off by default)** — the
+  `<qemu:commandline>` block at the bottom of the XML carries a
+  commented-out pair of `evdev=/dev/input/by-id/usb-CHANGEME-…` entries.
+  Leave it commented for now: SPICE (and later Looking Glass) handles
+  input, and a wrong path stops the domain starting. If you want raw
+  evdev later (doc 04 §8), note that only USB HID devices have stable
+  `/dev/input/by-id/`
   symlinks; a laptop's built-in keyboard/trackpad go through i8042/i2c
   and don't. Plug in an external USB keyboard and mouse (or pair a
   wireless pair to a Unifying/Lightspeed receiver), then run:
@@ -117,8 +129,10 @@ Placeholders to change (search for `EDIT:` for XML-comment markers and
   scripts/list-evdev-for-passthrough.sh --xml    # ready-to-paste block
   ```
 
-  The `--xml` form prints the complete `<qemu:commandline>` block with
-  both device paths filled in. Paste it over the CHANGEME block. Press
+  The `--xml` form prints the four `<qemu:arg>` lines with both device
+  paths filled in. Replace the commented CHANGEME lines with them, inside
+  the existing `<qemu:commandline>` (it may also hold the laptop kvmfr
+  lines from doc 04). Press
   both **Ctrl** keys simultaneously in the running guest to toggle
   input focus between host and guest.
 
@@ -238,7 +252,8 @@ Enable-NetFirewallRule -DisplayGroup 'Remote Desktop'
 ```
 
 Add an SSH public key to `C:\ProgramData\ssh\administrators_authorized_keys`
-(and set ACL to Administrators + SYSTEM only — see doc 08).
+(and set ACL to Administrators + SYSTEM only — exact commands and the
+host `~/.ssh/config` entry are in [doc 05 §6](05-windows-guest.md)).
 
 ## 9. Test the GPU inside the guest
 
@@ -262,10 +277,13 @@ virsh --connect qemu:///system snapshot-create-as windows-eng clean-install \
 - `virsh list` shows `windows-eng` `running`.
 - SPICE console works, guest boots into Windows 11.
 - Device Manager shows the Nvidia card, no warnings, `nvidia-smi` works.
+  (Laptops: an *NVIDIA Platform Controllers and Framework* device with
+  a yellow warning is expected and harmless. It needs the laptop's
+  ACPI tables, which the guest doesn't have.)
 - `Z:\` mounts the host `~/dev` tree, with this repo at
   `Z:\oma-eng\src\`.
-- `ssh windows-eng` from Omarchy works (after adding a host entry in
-  `~/.ssh/config`).
+- *(If you did §8)* the guest's `sshd` is running. `ssh windows-eng` from
+  Omarchy is set up and verified in [doc 05 §6](05-windows-guest.md).
 
 Continue to [04 — Looking Glass](04-looking-glass.md) for the seamless
 display.

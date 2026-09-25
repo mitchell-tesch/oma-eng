@@ -30,13 +30,20 @@
 # Usage:
 #     scripts/set-cmdline --status               # what's on the running kernel?
 #     sudo ./scripts/set-cmdline --dry-run       # show the diff
-#     sudo ./scripts/set-cmdline                 # apply (24 GiB hugepages)
-#     sudo ./scripts/set-cmdline --hugepages 32  # override hugepage count
+#     sudo ./scripts/set-cmdline                 # apply (hugepages = template <memory>)
+#     sudo ./scripts/set-cmdline --hugepages 24  # override hugepage count
 #     sudo ./scripts/set-cmdline --no-regen      # skip limine-update
+#
+# The default hugepage count is read from configs/libvirt/windows-eng.xml
+# (<memory>, 1 GiB per page), so it always matches the guest. Retarget both
+# with scripts/set-guest-memory. Counts leaving the host < 8 GiB are refused.
 
 set -euo pipefail
 
-hugepages=24
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+template_kib="$(sed -n "s|.*<memory unit='KiB'>\([0-9]\+\)</memory>.*|\1|p" \
+    "$REPO_ROOT/configs/libvirt/windows-eng.xml" 2>/dev/null | head -n1)"
+hugepages="$(( ${template_kib:-0} / 1048576 ))"
 dry=0
 show_status=0
 regen=1
@@ -47,13 +54,23 @@ while [[ $# -gt 0 ]]; do
         --no-regen)    regen=0; shift ;;
         --hugepages)   hugepages="${2:?--hugepages needs an integer}"; shift 2 ;;
         --hugepages=*) hugepages="${1#*=}"; shift ;;
-        -h|--help)     sed -n '2,36p' "$0"; exit 0 ;;
+        -h|--help)     sed -n '2,40p' "$0"; exit 0 ;;
         *)             echo "Unknown arg: $1" >&2; exit 2 ;;
     esac
 done
 
+if [[ $hugepages == 0 ]]; then
+    echo "Couldn't read <memory> from configs/libvirt/windows-eng.xml; pass --hugepages N." >&2
+    exit 2
+fi
 if ! [[ "$hugepages" =~ ^[0-9]+$ ]] || (( hugepages < 4 || hugepages > 512 )); then
     echo "Invalid --hugepages value: $hugepages (expected integer 4..512)" >&2
+    exit 2
+fi
+host_gib="$(awk '/MemTotal/ {printf "%d", $2/1048576}' /proc/meminfo)"
+if (( hugepages > host_gib - 8 )); then
+    echo "Refusing hugepages=$hugepages on a ${host_gib} GiB host: that leaves < 8 GiB for Linux." >&2
+    echo "Shrink the guest first:  scripts/set-guest-memory $(( host_gib - 12 > 8 ? host_gib - 12 : 8 ))" >&2
     exit 2
 fi
 

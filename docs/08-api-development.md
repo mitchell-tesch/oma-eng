@@ -251,7 +251,7 @@ you *can* skip when the workload is purely headless (`Rhino.Compute`
 serving geometry over HTTP, a nightly FEA batch, an unattended ETABS
 run) is the **GPU pass-through and Looking Glass**. Boot the guest
 without the `<hostdev>` GPU block attached, drive it via SSH, and
-give the 24 GiB of hugepages back to the host. `Rhino.Compute` still
+give the guest's hugepages back to the host. `Rhino.Compute` still
 runs *inside the guest* — there's no Linux build of it in Rhino 8.
 See the [Rhino Compute docs](https://developer.rhino3d.com/guides/compute/)
 and [doc 06 §8](06-rhino-setup.md).

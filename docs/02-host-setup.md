@@ -30,6 +30,9 @@ Reboot if the kernel updated.
 
 ## 1. Run the host-prep script
 
+Run everything from the repo root at `~/dev/oma-eng` (see the README's
+*Install path*; the guest share and `Z:\oma-eng\` paths depend on it).
+
 [`scripts/prepare-host.sh`](../scripts/prepare-host.sh) idempotently
 installs every package this repo needs (QEMU, libvirt, virt-manager,
 edk2-ovmf, swtpm, dnsmasq, libxml2, the vfio/mkinitcpio drop-ins, and
@@ -103,10 +106,17 @@ back to `/etc/kernel/cmdline`, systemd-boot entries, or GRUB.
 ```bash
 scripts/set-cmdline --status                  # what's on the running kernel?
 sudo ./scripts/set-cmdline --dry-run          # preview
-sudo ./scripts/set-cmdline                    # apply (24 GiB hugepages)
-sudo ./scripts/set-cmdline --hugepages 32     # apply with a different size
+sudo ./scripts/set-cmdline                    # apply (hugepages = template guest RAM)
+sudo ./scripts/set-cmdline --hugepages 24     # apply with a different size
 sudo ./scripts/set-cmdline --no-regen         # skip limine-update
 ```
+
+The hugepage count defaults to the guest RAM in
+[`windows-eng.xml`](../configs/libvirt/windows-eng.xml) (32 GiB as
+shipped), so the two can't drift. It refuses a count that would leave the
+host under 8 GiB. **On a host with less than ~48 GB RAM, shrink the guest
+first** with `scripts/set-guest-memory 16` or `24` (see §6), then run
+`set-cmdline`.
 
 Rebooting is still up to you.
 
@@ -117,18 +127,18 @@ files yourself:
 sudoedit /etc/limine-entry-tool.d/vfio.conf
 ```
 
-Add a single append line:
+Add a single append line (replace `32` with your guest RAM in GiB):
 
 **Intel hosts:**
 
 ```bash
-KERNEL_CMDLINE[default]+=" intel_iommu=on iommu=pt default_hugepagesz=1G hugepagesz=1G hugepages=24"
+KERNEL_CMDLINE[default]+=" intel_iommu=on iommu=pt default_hugepagesz=1G hugepagesz=1G hugepages=32"
 ```
 
 **AMD hosts:**
 
 ```bash
-KERNEL_CMDLINE[default]+=" amd_iommu=on iommu=pt default_hugepagesz=1G hugepagesz=1G hugepages=24"
+KERNEL_CMDLINE[default]+=" amd_iommu=on iommu=pt default_hugepagesz=1G hugepagesz=1G hugepages=32"
 ```
 
 The leading space in the string is intentional — `+=` concatenates
@@ -141,7 +151,7 @@ Verify the composed cmdline before rebuilding the UKI:
 sudo limine-entry-tool --get-cmdline linux --no-mutex --no-hooks
 ```
 
-That should end in `... hugepages=24`. Then rebuild the UKI +
+That should end in `... hugepages=32` (or your size). Then rebuild the UKI +
 `/boot/limine.conf`:
 
 ```bash
@@ -175,8 +185,9 @@ Omarchy's snapshot regeneration.
   only the passed-through devices go through IOMMU; better host perf).
 - `default_hugepagesz=1G hugepagesz=1G hugepages=N` — reserve N GiB of
   1 GiB hugepages at boot. Match to your planned guest memory:
-  16 for Rhino-only, **24 for Rhino + Strand7 + Excel/Office** (this
-  repo's default), 32+ for heavy FEA or large Excel dashboards. If
+  16 for Rhino-only, 24 for Rhino + Strand7 + Excel/Office,
+  **32 for + ETABS / heavy FEA** (the template's default; `set-cmdline`
+  reads it from the XML). If
   you'd rather manage hugepages via sysctl, skip this and install
   [`configs/sysctl.d/99-vm-hugepages.conf`](../configs/sysctl.d/99-vm-hugepages.conf)
   instead.
@@ -214,15 +225,20 @@ Or manually:
 
 ```bash
 lspci -nn | grep -i -E 'nvidia|geforce|rtx|quadro'
+# Example output from a desktop card (yours will differ):
 # 01:00.0 VGA compatible controller [0300]: NVIDIA Corporation ... [10de:2504] (rev a1)
 # 01:00.1 Audio device [0403]: NVIDIA Corporation ...             [10de:228e] (rev a1)
 ```
 
-The interesting bit is `[10de:2504]` and `[10de:228e]`. Both must be bound
+The interesting bit is the `[vendor:device]` pairs (`10de:2504` and
+`10de:228e` in this example). Every function must be bound
 to vfio-pci. If your card also exposes USB-C or an extra function (some
 RTX cards have a USB controller at `.2`), include those too.
 
-Write these into `/etc/modprobe.d/vfio.conf` in the next step — that's
+Write these into [`configs/modprobe.d/vfio.conf`](../configs/modprobe.d/vfio.conf)
+(it ships with the author's laptop ID as an example) and re-run
+`sudo ./scripts/prepare-host.sh`, which installs it to
+`/etc/modprobe.d/vfio.conf` and warns if an ID matches no device. That's
 where vfio-pci reads them from at module-load time. Keeping the IDs
 out of the Limine cmdline means (a) your bootloader edit stays short
 and readable, and (b) Omarchy snapshot regeneration can't accidentally
@@ -261,7 +277,7 @@ Two mechanisms working together:
 contains something like:
 
 ```
-# Bind Nvidia PCI IDs to vfio-pci
+# Bind Nvidia PCI IDs to vfio-pci (example: RTX A500 Laptop)
 options vfio-pci ids=10de:25bb disable_vga=1
 
 # Keep the open-source and proprietary nvidia drivers off the host
@@ -464,7 +480,8 @@ From the next reboot btrfs also enables `discard=async` on its own
 
 ## Exit criteria
 
-- `lspci -nnk -d 10de:2504` shows `Kernel driver in use: vfio-pci`.
+- `lspci -nnk -d 10de:` shows `Kernel driver in use: vfio-pci` for every
+  Nvidia function.
 - `grep Huge /proc/meminfo` shows the reserved pages.
 - `virsh -c qemu:///system list` runs without needing sudo.
 - `dmesg | grep -i vfio` shows successful vfio-pci probes with no errors.

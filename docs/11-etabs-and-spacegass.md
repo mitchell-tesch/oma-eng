@@ -45,8 +45,8 @@ With the full engineering stack open concurrently:
 | Apps you routinely run at once | Guest RAM |
 |---|---|
 | Rhino only | 16 GiB |
-| Rhino + Strand7 + Excel (repo default) | 24 GiB |
-| + ETABS **or** SAP2000 (typical building models) | 32 GiB |
+| Rhino + Strand7 + Excel | 24 GiB |
+| + ETABS **or** SAP2000 (typical building models) — template default | 32 GiB |
 | + ETABS + SAP2000 concurrently | 36 GiB |
 | + ETABS (200+ storey model, non-linear time-history) | 48 GiB |
 | + SpaceGass (typical) | +2–4 GiB on top |

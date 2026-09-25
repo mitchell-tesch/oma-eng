@@ -145,7 +145,7 @@ Headless smoke test (proves the addon loads and Bonsai's
 ```bash
 blender-bim --background --python-expr "
 import bpy, ifcopenshell
-bpy.ops.bim.load_project(filepath='/home/mzt/dev/oma-eng/src/native-tooling/samples/smoke.ifc')
+bpy.ops.bim.load_project(filepath='$HOME/dev/oma-eng/src/native-tooling/samples/smoke.ifc')
 m = ifcopenshell.open(bpy.context.scene.BIMProperties.ifc_file)
 print('Columns in loaded model:', len(m.by_type('IfcColumn')))
 "

@@ -266,15 +266,16 @@ Key values already set in the template:
 focuses it instead of spawning a second instance.
 
 Wire it into Omarchy's Apps menu (`SUPER + ALT + SPACE`) with a
-`.desktop` entry:
+`.desktop` entry. The heredoc is unquoted so `$HOME` expands; adjust
+the path if you didn't clone to `~/dev/oma-eng`:
 
 ```bash
-cat > ~/.local/share/applications/windows-eng-vm.desktop <<'EOF'
+cat > ~/.local/share/applications/windows-eng-vm.desktop <<EOF
 [Desktop Entry]
 Version=1.0
 Name=Windows Eng VM
 Comment=Start the windows-eng CAD VM and open Looking Glass
-Exec=/home/mzt/dev/oma-eng/scripts/launch-windows-eng
+Exec=$HOME/dev/oma-eng/scripts/launch-windows-eng
 Icon=virt-manager
 Terminal=false
 Type=Application
@@ -405,11 +406,14 @@ After the driver cycles, pick the new mode in Settings. IVSHMEM at
 bump `kvmfr static_size_mb` to `256` and the matching `size=128M` →
 `size=256M` in the `<qemu:arg>` block for 5K/8K or high-refresh 4K.
 
-## 8. Input: evdev pass-through with hot-key switch
+## 8. Input: evdev pass-through with hot-key switch (optional)
 
-Looking Glass can grab keyboard/mouse via SPICE, but for CAD you want raw
-evdev — Rhino's viewport tumbling depends on precise deltas. The XML
-template adds evdev input devices with a `LEFTCTRL+RIGHTCTRL` toggle:
+Looking Glass forwards keyboard/mouse over SPICE (`rawMouse = yes` in
+the client config), which is enough for most CAD work. If you want raw
+evdev instead — e.g. a dedicated USB keyboard/mouse pair handed wholly
+to the guest — the XML template ships the block **commented out** at
+the bottom of `<qemu:commandline>`. Uncomment it and fill in the paths
+(`scripts/list-evdev-for-passthrough.sh --xml` prints them):
 
 ```xml
 <input type='evdev'>
