@@ -50,10 +50,9 @@ Revit is memory-hungry. Extend the ladder from
 
 If Revit joins the daily stack, retarget the guest with
 [`scripts/set-guest-memory 40`](../scripts/set-guest-memory) (or
-48, 64 as needed) — it syncs the memory element in
-[configs/libvirt/windows-eng.xml](../configs/libvirt/windows-eng.xml),
-the hugepages sysctl and service, and prints the `hugepages=` value
-to paste onto `/boot/limine.conf`. Host RAM floor: leave at least
+48, 64 as needed). It syncs `<memory>` in your
+`configs/libvirt/windows-eng.local.xml`, the hugepages sysctl drop-in and
+libvirt's config; then `sudo scripts/set-cmdline` and reboot. Host RAM floor: leave at least
 8 GiB for Omarchy under load, so 48 GiB guest → 56 GiB host minimum.
 
 ## Licence considerations

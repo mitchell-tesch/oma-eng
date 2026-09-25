@@ -60,9 +60,11 @@ case "$cpu_vendor" in
         ;;
 esac
 
-# Suggested cmdline: hugepages = the template guest's <memory> in GiB.
+# Suggested cmdline: hugepages = the guest's <memory> in GiB (local copy first).
+guest_xml="$(dirname "$0")/../configs/libvirt/windows-eng.local.xml"
+[[ -f "$guest_xml" ]] || guest_xml="$(dirname "$0")/../configs/libvirt/windows-eng.xml"
 template_kib="$(sed -n "s|.*<memory unit='KiB'>\([0-9]\+\)</memory>.*|\1|p" \
-    "$(dirname "$0")/../configs/libvirt/windows-eng.xml" 2>/dev/null | head -n1)"
+    "$guest_xml" 2>/dev/null | head -n1)"
 guest_gib=$(( ${template_kib:-25165824} / 1048576 ))
 suggested_cmdline="$iommu_param iommu=pt default_hugepagesz=1G hugepagesz=1G hugepages=$guest_gib"
 

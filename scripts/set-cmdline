@@ -34,15 +34,18 @@
 #     sudo ./scripts/set-cmdline --hugepages 24  # override hugepage count
 #     sudo ./scripts/set-cmdline --no-regen      # skip limine-update
 #
-# The default hugepage count is read from configs/libvirt/windows-eng.xml
-# (<memory>, 1 GiB per page), so it always matches the guest. Retarget both
+# The default hugepage count is read from the guest XML (<memory>, 1 GiB
+# per page): configs/libvirt/windows-eng.local.xml if present, else the
+# template windows-eng.xml. Retarget both
 # with scripts/set-guest-memory. Counts leaving the host < 8 GiB are refused.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+guest_xml="$REPO_ROOT/configs/libvirt/windows-eng.local.xml"
+[[ -f "$guest_xml" ]] || guest_xml="$REPO_ROOT/configs/libvirt/windows-eng.xml"
 template_kib="$(sed -n "s|.*<memory unit='KiB'>\([0-9]\+\)</memory>.*|\1|p" \
-    "$REPO_ROOT/configs/libvirt/windows-eng.xml" 2>/dev/null | head -n1)"
+    "$guest_xml" 2>/dev/null | head -n1)"
 hugepages="$(( ${template_kib:-0} / 1048576 ))"
 dry=0
 show_status=0
@@ -60,7 +63,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ $hugepages == 0 ]]; then
-    echo "Couldn't read <memory> from configs/libvirt/windows-eng.xml; pass --hugepages N." >&2
+    echo "Couldn't read <memory> from $guest_xml; pass --hugepages N." >&2
     exit 2
 fi
 if ! [[ "$hugepages" =~ ^[0-9]+$ ]] || (( hugepages < 4 || hugepages > 512 )); then

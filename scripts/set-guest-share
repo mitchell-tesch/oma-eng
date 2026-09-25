@@ -26,16 +26,21 @@
 #
 # If TAG is omitted, the basename of HOST-PATH is used. Re-adding an
 # existing TAG rewrites its source path in-place (idempotent).
+#
+# Edits configs/libvirt/windows-eng.local.xml (gitignored, created from
+# the tracked template on first change); --list falls back to the template.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-XML="$REPO_ROOT/configs/libvirt/windows-eng.xml"
+TEMPLATE="$REPO_ROOT/configs/libvirt/windows-eng.xml"
+LOCAL="$REPO_ROOT/configs/libvirt/windows-eng.local.xml"
+XML="$LOCAL"; [[ -f "$XML" ]] || XML="$TEMPLATE"
 DOMAIN="windows-eng"
 VIRSH="virsh --connect qemu:///system"
 
 usage() {
-    sed -n '2,28p' "$0"
+    sed -n '2,31p' "$0"
     exit "${1:-0}"
 }
 
@@ -106,13 +111,15 @@ replace_share() {
 }
 
 # Insert a fresh <filesystem> block just before the "Nvidia dGPU"
-# comment (the anchor that ends the shares group in the shipped XML).
+# comment (ends the shares group in the template), or before </devices>
+# in a comment-free copy such as `virsh dumpxml` output.
 insert_share() {
     local tag="$1" host_path="$2"
-    local block
+    local block anchor='<!-- Nvidia dGPU passthrough[.]'
     block="$(share_block "$host_path" "$tag")"
-    awk -v block="$block" '
-        /<!-- Nvidia dGPU passthrough\./ && !inserted {
+    grep -qE "$anchor" "$XML" || anchor='</devices>'
+    awk -v block="$block" -v anchor="$anchor" '
+        $0 ~ anchor && !inserted {
             print ""
             print "    <!-- Added by scripts/set-guest-share -->"
             print block
@@ -121,6 +128,17 @@ insert_share() {
         }
         { print }
     ' "$XML"
+}
+
+# `virsh define` of an existing domain needs its UUID in the XML; the
+# template omits it, so copy the defined domain's UUID in once.
+ensure_uuid() {
+    grep -q '<uuid>' "$XML" && return 0
+    local uuid
+    uuid="$($VIRSH domuuid "$DOMAIN" 2>/dev/null)" || return 0
+    [[ -n "$uuid" ]] || return 0
+    sed -i "0,/<\/name>/s|</name>|</name>\n  <uuid>${uuid}</uuid>|" "$XML"
+    printf '  uuid %s pinned in %s\n' "$uuid" "$XML"
 }
 
 # Remove the <filesystem> block whose target is TAG. Also drops the
@@ -259,7 +277,13 @@ if [[ "$action" == "remove" && -z "$tag" ]]; then
     echo "Missing TAG for --remove" >&2; exit 2
 fi
 
-# --- Repo XML edit --------------------------------------------------------
+# --- Local XML edit -------------------------------------------------------
+
+if [[ "$XML" != "$LOCAL" ]] && (( ! dry )); then
+    cp "$TEMPLATE" "$LOCAL"
+    XML="$LOCAL"
+    printf '  new %s (copied from the template; gitignored)\n' "$LOCAL"
+fi
 
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
@@ -310,7 +334,7 @@ fi
 
 if ! $VIRSH dominfo "$DOMAIN" >/dev/null 2>&1; then
     if (( apply )); then
-        printf '  def %s (fresh install, virsh define from repo XML)\n' "$DOMAIN"
+        printf '  def %s (fresh install, virsh define from %s)\n' "$DOMAIN" "$(basename "$XML")"
         $VIRSH define "$XML"
     else
         printf '  new %s not defined; would run: %s define %s\n' \
@@ -403,7 +427,8 @@ EOF
     fi
 elif [[ "$dom_state" == "shut off" ]]; then
     if (( apply )); then
-        printf '  def %s (shutoff, virsh define syncs from repo XML)\n' "$DOMAIN"
+        ensure_uuid
+        printf '  def %s (shutoff, virsh define syncs from %s)\n' "$DOMAIN" "$(basename "$XML")"
         $VIRSH define "$XML"
     else
         printf '  --- %s shut off; would run: %s define %s\n' \

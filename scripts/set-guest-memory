@@ -1,28 +1,24 @@
 #!/usr/bin/env bash
-# set-guest-memory — atomically retarget guest RAM across every file
-# that duplicates the number, apply the change live where safe, and
-# print the one bootloader step that has to stay manual.
+# set-guest-memory — retarget guest RAM everywhere it matters on THIS
+# host, apply it live where safe, and print the one bootloader step that
+# has to stay manual.
 #
-# The guest memory size is quietly duplicated in five places:
-#   - configs/libvirt/windows-eng.xml            (<memory>, <currentMemory>, KiB)
-#   - configs/sysctl.d/99-vm-hugepages.conf      (vm.nr_hugepages — repo template)
-#   - configs/systemd/hugepages.service          (echo N > ..., fallback unit)
-#   - /etc/sysctl.d/99-vm-hugepages.conf         (installed drop-in — must stay in
-#                                                 sync or systemd-sysctl trims at boot)
-#   - libvirt persistent config for windows-eng  (setmaxmem/setmem --config)
+# Edits and syncs:
+#   - configs/libvirt/windows-eng.local.xml   (<memory>, <currentMemory>)
+#     Your machine's copy, gitignored; created from the tracked template
+#     windows-eng.xml on first run. Tracked files are never edited.
+#   - /etc/sysctl.d/99-vm-hugepages.conf      (vm.nr_hugepages, if installed;
+#     rendered from the repo template so systemd-sysctl can't trim at boot)
+#   - libvirt persistent config for windows-eng (setmaxmem/setmem --config,
+#     or `virsh define` of the local XML for a fresh install)
 #
-# Plus the kernel command line in /boot/limine.conf (`hugepages=N`).
-# By default this helper edits the three repo files, `sudo cp`s the sysctl
-# drop-in into place and reloads it, and updates the libvirt persistent
-# config (setmaxmem/setmem for a defined domain, `virsh define` for a
-# fresh install). limine.conf stays manual by design — the bootloader
-# lives outside the repo, and the kernel only reserves the new page count
-# at boot.
+# The kernel cmdline `hugepages=N` stays manual: re-run
+# `sudo scripts/set-cmdline` (it reads N from the local XML) and reboot.
 #
 # Usage:
-#     scripts/set-guest-memory 32                  # sync repo + host + libvirt
-#     scripts/set-guest-memory 32 --no-apply       # sync repo only, print host steps
-#     scripts/set-guest-memory 32 --dry-run        # show the diffs, change nothing
+#     scripts/set-guest-memory 32                  # sync local XML + host + libvirt
+#     scripts/set-guest-memory 32 --no-apply       # local XML only, print host steps
+#     scripts/set-guest-memory 32 --dry-run        # show the diff, change nothing
 #     scripts/set-guest-memory --status            # show current values
 #     scripts/set-guest-memory --help
 #
@@ -34,12 +30,15 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-XML="$REPO_ROOT/configs/libvirt/windows-eng.xml"
+TEMPLATE="$REPO_ROOT/configs/libvirt/windows-eng.xml"
+XML="$REPO_ROOT/configs/libvirt/windows-eng.local.xml"
 SYSCTL="$REPO_ROOT/configs/sysctl.d/99-vm-hugepages.conf"
-SVC="$REPO_ROOT/configs/systemd/hugepages.service"
+INSTALLED_SYSCTL="/etc/sysctl.d/99-vm-hugepages.conf"
+DOMAIN="windows-eng"
+VIRSH="virsh --connect qemu:///system"
 
 usage() {
-    sed -n '2,32p' "$0"
+    sed -n '2,28p' "$0"
     exit "${1:-0}"
 }
 
@@ -58,7 +57,7 @@ for arg in "$@"; do
     esac
 done
 
-for f in "$XML" "$SYSCTL" "$SVC"; do
+for f in "$TEMPLATE" "$SYSCTL"; do
     if [[ ! -f "$f" ]]; then
         printf 'Missing repo file: %s\n' "$f" >&2
         printf 'Run this script from a checked-out oma-eng tree.\n' >&2
@@ -68,19 +67,18 @@ done
 
 # --- --status short-circuit ------------------------------------------------
 
-current_kib="$(sed -n "s|.*<memory unit='KiB'>\([0-9]\+\)</memory>.*|\1|p" "$XML" | head -n1)"
-current_sysctl="$(sed -n 's|^vm\.nr_hugepages = \([0-9]\+\).*|\1|p' "$SYSCTL" | head -n1)"
-current_svc="$(sed -n "s|.*echo \([0-9]\+\) > /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages.*|\1|p" "$SVC" | head -n1)"
+src_xml="$XML"; [[ -f "$XML" ]] || src_xml="$TEMPLATE"
+current_kib="$(sed -n "s|.*<memory unit='KiB'>\([0-9]\+\)</memory>.*|\1|p" "$src_xml" | head -n1)"
 
 if [[ $show_status -eq 1 ]]; then
-    if [[ -n "$current_kib" ]]; then
-        printf 'windows-eng.xml <memory>       : %d KiB (%.1f GiB)\n' \
-            "$current_kib" "$(awk -v k="$current_kib" 'BEGIN{print k/1024/1024}')"
-    else
-        printf 'windows-eng.xml <memory>       : (not found)\n'
-    fi
-    printf '99-vm-hugepages.conf           : %s x 1 GiB pages\n' "${current_sysctl:-(not found)}"
-    printf 'hugepages.service              : %s x 1 GiB pages\n'  "${current_svc:-(not found)}"
+    printf '%-34s: %s GiB\n' "$(basename "$src_xml") <memory>" "$(( ${current_kib:-0} / 1048576 ))"
+    [[ -f "$XML" ]] || printf '%-34s  (no local copy yet — created on first change)\n' ''
+    printf '%-34s: %s\n' "$INSTALLED_SYSCTL" \
+        "$(sed -n 's|^vm\.nr_hugepages = \([0-9]\+\).*|\1 pages|p' "$INSTALLED_SYSCTL" 2>/dev/null || true)"
+    printf '%-34s: %s\n' 'running kernel cmdline' \
+        "$(grep -oE '\bhugepages=[0-9]+' /proc/cmdline || echo '(no hugepages=)')"
+    printf '%-34s: %s\n' "libvirt $DOMAIN max memory" \
+        "$($VIRSH dominfo "$DOMAIN" 2>/dev/null | sed -n 's|^Max memory:[[:space:]]*||p' || true)"
     exit 0
 fi
 
@@ -122,58 +120,32 @@ edit_xml() {
            -e "s|<currentMemory unit='KiB'>[0-9]+</currentMemory>|<currentMemory unit='KiB'>${target_kib}</currentMemory>|" \
            "$1"
 }
-edit_sysctl() {
-    sed -E "s|^vm\.nr_hugepages = [0-9]+|vm.nr_hugepages = ${target_pages}|" "$1"
-}
-edit_svc() {
-    # Only touch the ExecStart line — ExecStop must stay `echo 0`
-    # so the pages are released when the service stops.
-    sed -E "/^ExecStart=/ s|(echo )[0-9]+( > /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages)|\1${target_pages}\2|" "$1"
+render_sysctl() {
+    sed -E "s|^vm\.nr_hugepages = [0-9]+|vm.nr_hugepages = ${target_pages}|" "$SYSCTL"
 }
 
 if [[ $dry -eq 1 ]]; then
     echo "=== $XML ==="
-    diff -u "$XML"    <(edit_xml    "$XML")    || true
-    echo
-    echo "=== $SYSCTL ==="
-    diff -u "$SYSCTL" <(edit_sysctl "$SYSCTL") || true
-    echo
-    echo "=== $SVC ==="
-    diff -u "$SVC"    <(edit_svc    "$SVC")    || true
+    diff -u "$src_xml" <(edit_xml "$src_xml") || true
     echo
     echo "(dry run — no files modified)"
 else
+    if [[ ! -f "$XML" ]]; then
+        cp "$TEMPLATE" "$XML"
+        printf '  new %s (copied from the template; gitignored)\n' "$XML"
+    fi
     tmp="$(mktemp)"
-    for f in "$XML" "$SYSCTL" "$SVC"; do
-        case "$f" in
-            "$XML")    edit_xml    "$f" > "$tmp" ;;
-            "$SYSCTL") edit_sysctl "$f" > "$tmp" ;;
-            "$SVC")    edit_svc    "$f" > "$tmp" ;;
-        esac
-        if cmp -s "$tmp" "$f"; then
-            printf '  ok  %s (already at target)\n' "$f"
-        else
-            mv "$tmp" "$f"
-            tmp="$(mktemp)"
-            printf '  new %s\n' "$f"
-        fi
-    done
-    rm -f "$tmp"
+    edit_xml "$XML" > "$tmp"
+    if cmp -s "$tmp" "$XML"; then
+        printf '  ok  %s (already at target)\n' "$XML"
+        rm -f "$tmp"
+    else
+        mv "$tmp" "$XML"
+        printf '  new %s\n' "$XML"
+    fi
 fi
 
 # --- Live application (sysctl drop-in + libvirt persistent config) --------
-# The three repo edits above only affect files inside the working tree.
-# For the change to take effect on THIS host we also need to:
-#   - copy the sysctl drop-in into /etc/sysctl.d/ and reload it, else
-#     systemd-sysctl trims nr_hugepages back at every boot
-#   - update the libvirt persistent config: setmaxmem/setmem for a
-#     defined domain (avoids the UUID conflict on `virsh define`),
-#     or `virsh define` for a fresh install
-#   - edit /boot/limine.conf by hand and reboot (still manual)
-
-INSTALLED_SYSCTL="/etc/sysctl.d/99-vm-hugepages.conf"
-DOMAIN="windows-eng"
-VIRSH="virsh --connect qemu:///system"
 
 apply=1
 if (( dry )) || (( no_apply )); then
@@ -186,15 +158,17 @@ printf '=== Live host state ===\n'
 # --- sysctl drop-in --------------------------------------------------------
 
 if [[ -f "$INSTALLED_SYSCTL" ]]; then
-    if cmp -s "$SYSCTL" "$INSTALLED_SYSCTL"; then
-        printf '  ok  %s (already in sync)\n' "$INSTALLED_SYSCTL"
+    installed_pages="$(sed -n 's|^vm\.nr_hugepages = \([0-9]\+\).*|\1|p' "$INSTALLED_SYSCTL" | head -n1)"
+    if [[ "$installed_pages" == "$target_pages" ]]; then
+        printf '  ok  %s (vm.nr_hugepages = %d)\n' "$INSTALLED_SYSCTL" "$target_pages"
     elif (( apply )); then
         printf '  cp  %s (sudo)\n' "$INSTALLED_SYSCTL"
-        sudo install -m 644 "$SYSCTL" "$INSTALLED_SYSCTL"
+        render_sysctl | sudo install -m 644 /dev/stdin "$INSTALLED_SYSCTL"
         sudo sysctl --system > /dev/null
         printf '  ok  nr_hugepages applied (%d x 1 GiB)\n' "$target_pages"
     else
-        printf '  drift %s differs from repo (would sudo cp + sysctl --system)\n' "$INSTALLED_SYSCTL"
+        printf '  drift %s has %s pages (would sudo install + sysctl --system)\n' \
+            "$INSTALLED_SYSCTL" "${installed_pages:-no}"
     fi
 else
     printf '  --- %s not installed (kernel-cmdline-only path, nothing to sync)\n' "$INSTALLED_SYSCTL"
@@ -205,8 +179,8 @@ fi
 if ! command -v virsh >/dev/null 2>&1; then
     printf '  --- virsh not on PATH; skipping libvirt sync\n'
 elif ! $VIRSH dominfo "$DOMAIN" >/dev/null 2>&1; then
-    if (( apply )); then
-        printf '  def %s (fresh install, virsh define from repo XML)\n' "$DOMAIN"
+    if (( apply )) && [[ -f "$XML" ]]; then
+        printf '  def %s (fresh install, virsh define from local XML)\n' "$DOMAIN"
         $VIRSH define "$XML"
     else
         printf '  new %s not defined; would run: %s define %s\n' \
@@ -234,30 +208,22 @@ else
     fi
 fi
 
-# --- limine.conf reminder (bootloader — always manual) --------------------
+# --- Kernel cmdline reminder (bootloader — needs root + reboot) -----------
+
+if grep -qE "\bhugepages=${target_pages}\b" /proc/cmdline; then
+    printf '  ok  running kernel already reserves hugepages=%d\n' "$target_pages"
+    exit 0
+fi
 
 cat <<EOF
 
-Manual follow-up — /boot/limine.conf (bootloader, outside the repo):
+Manual follow-up — reserve the new page count at boot:
 
-  Edit /boot/limine.conf. On the main Omarchy Linux entry's 'cmdline:'
-  line, replace any existing 'hugepages=NN' token with:
+    sudo scripts/set-cmdline          # reads hugepages=${target_pages} from the local XML
+    sudo systemctl reboot
 
-      hugepages=${target_pages}
+Verify:
 
-  Full cmdline snippet for a fresh install (adjust intel_iommu /
-  amd_iommu as your CPU requires — 'scripts/detect-host.sh --cmdline'
-  prints the right one):
-
-      intel_iommu=on iommu=pt default_hugepagesz=1G hugepagesz=1G hugepages=${target_pages}
-
-  Then reboot to reserve the hugepages at boot:
-
-      sudo systemctl reboot
-
-  Verify:
-
-      grep Huge /proc/meminfo
-      # HugePages_Total should be ${target_pages}
+    grep HugePages_Total /proc/meminfo   # should be ${target_pages}
 
 EOF

@@ -54,9 +54,14 @@ in the guest XML instead of a `<disk>`. Note this consumes an entire drive.
 
 ## 3. Copy and edit the guest XML template
 
+Make your machine's copy next to the template. `*.local.xml` is
+gitignored, so your paths, IDs and UUID never end up in commits, and
+`set-cmdline`, `set-guest-memory` and `set-guest-share` all read and edit
+this file when it exists:
+
 ```bash
-cp configs/libvirt/windows-eng.xml /tmp/windows-eng.xml
-$EDITOR /tmp/windows-eng.xml
+cp configs/libvirt/windows-eng.xml configs/libvirt/windows-eng.local.xml
+$EDITOR configs/libvirt/windows-eng.local.xml
 ```
 
 Placeholders to change (search for `EDIT:` for XML-comment markers and
@@ -141,9 +146,20 @@ Placeholders to change (search for `EDIT:` for XML-comment markers and
 ```bash
 sudo virsh net-start default
 sudo virsh net-autostart default
-virsh --connect qemu:///system define /tmp/windows-eng.xml
+virt-xml-validate configs/libvirt/windows-eng.local.xml domain
+virsh --connect qemu:///system define configs/libvirt/windows-eng.local.xml
 virsh --connect qemu:///system start windows-eng
 virt-viewer --connect qemu:///system windows-eng
+```
+
+After the first define, copy the UUID libvirt generated into the local
+file so later `virsh define`s of it update this domain instead of
+failing with *already exists with uuid* (`set-guest-share` does this
+for you when needed):
+
+```bash
+sed -i "s|</name>|</name>\n  <uuid>$(virsh -c qemu:///system domuuid windows-eng)</uuid>|" \
+    configs/libvirt/windows-eng.local.xml
 ```
 
 `virt-viewer` gives you a SPICE window to complete the Windows install.

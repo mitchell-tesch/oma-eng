@@ -35,11 +35,9 @@ the VM changes; Office is just another Windows app.
 **Cost:** RAM. Rhino + Strand7 + Excel needs about 24 GiB; the template
 ships 32 GiB, which also covers large workbooks. Use
 [`scripts/set-guest-memory <GiB>`](../scripts/set-guest-memory) to
-retarget [`configs/libvirt/windows-eng.xml`](../configs/libvirt/windows-eng.xml),
-[`configs/sysctl.d/99-vm-hugepages.conf`](../configs/sysctl.d/99-vm-hugepages.conf),
-and [`configs/systemd/hugepages.service`](../configs/systemd/hugepages.service)
-atomically; the script also prints the `hugepages=N` snippet to
-paste onto the Limine cmdline.
+retarget your `configs/libvirt/windows-eng.local.xml`, the installed
+hugepages sysctl drop-in and libvirt's config together, then
+`sudo scripts/set-cmdline` and reboot to reserve the new page count.
 
 ### B. Omarchy's built-in `omarchy windows vm` (Dockur)
 

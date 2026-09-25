@@ -53,13 +53,10 @@ With the full engineering stack open concurrently:
 | + big Excel dashboards driven by OAPI | +4–8 GiB |
 
 If you routinely open ETABS or SAP2000 with the rest of the stack,
-retarget the guest to 32 GiB with the helper — it edits
-[configs/libvirt/windows-eng.xml](../configs/libvirt/windows-eng.xml),
-[configs/sysctl.d/99-vm-hugepages.conf](../configs/sysctl.d/99-vm-hugepages.conf),
-and
-[configs/systemd/hugepages.service](../configs/systemd/hugepages.service)
-atomically, then prints the exact `hugepages=` value to paste onto
-the Limine cmdline:
+retarget the guest to 32 GiB with the helper. It edits your
+`configs/libvirt/windows-eng.local.xml`, the installed hugepages sysctl
+drop-in and libvirt's config, then reminds you to re-run
+`sudo scripts/set-cmdline` and reboot:
 
 ```bash
 scripts/set-guest-memory 32               # or 40, 48 as needed
