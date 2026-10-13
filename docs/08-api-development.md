@@ -213,14 +213,14 @@ own `.vscode/launch.json` with the right mode:
   Set `"justMyCode": false` in the config if you want to step into
   `pywin32`.
 
-> **Python + virtiofs caveat.** Setting breakpoints in a `.py` file
-> under `Z:\oma-eng\src\` fails with `OSError: [WinError 1005]` — `debugpy` calls
+> **Python + virtiofs caveat.** Debug with Python 3.13 or newer. On
+> 3.12 and older, setting breakpoints in a `.py` file under
+> `Z:\oma-eng\src\` fails with `OSError: [WinError 1005]` — `debugpy` calls
 > `os.path.realpath()` and WinFsp doesn't implement the underlying
-> Win32 volume-info FSCTL. For breakpoint-driven Python debug, mirror
-> the folder to a local NTFS path in the guest first:
-> `robocopy Z:\oma-eng\src\<project> C:\dev\<project> /MIR`, then open the C:\
-> copy in Remote-SSH. C# / `coreclr` is unaffected. Full detail in
-> [doc 09 § Python debugger fails with `[WinError 1005]`](09-troubleshooting.md).
+> Win32 volume-info FSCTL. Python 3.13.4+ tolerates that error, so
+> breakpoints bind directly on `Z:`. C# / `coreclr` is unaffected. Full
+> detail and the 3.12 fallback in
+> [doc 09 § Python debugger fails with `[WinError 1005]`](09-troubleshooting.md#debugger-fails-with-winerror-1005-on-zoma-engsrc).
 
 ## Source control
 

@@ -236,25 +236,20 @@ VS Code Remote-SSH into the guest, then F5. Each sample ships its own
 ships a `Python: hello_strand7` config. First run in a fresh guest
 prompts VS Code to install `debugpy` into the selected Python — say yes.
 
-> **Caveat — debug from a local NTFS copy, not `Z:\oma-eng\src\`.** Setting
-> breakpoints in a Python file that lives on `Z:\oma-eng\src\` fails with
-> `[WinError 1005] The volume does not contain a recognized file
-> system`. `debugpy` canonicalises every breakpoint path through
-> `os.path.realpath()` → `_getfinalpathname()`, and WinFsp (the driver
-> that surfaces virtiofs to Windows) doesn't implement the volume-info
-> FSCTL that Win32 call needs. C# / `coreclr` doesn't take this path,
-> which is why the C# sample debugs fine from `Z:\oma-eng\src\`. Fix — mirror the
-> Python folder to a local NTFS path in the guest before debugging:
->
-> ```powershell
-> robocopy Z:\oma-eng\src\strand7-api\python C:\dev\strand7-api\python /MIR
-> ```
->
-> Open `C:\dev\strand7-api\python` in VS Code Remote-SSH, F5 there.
-> Re-run the `robocopy` to freshen from Omarchy. For a *smoke-test* run
-> (no breakpoints), `py Z:\oma-eng\src\strand7-api\python\hello_strand7.py` from
-> §6 keeps working — the caveat is debug-only. See
-> [doc 09 § Python debugger fails with `[WinError 1005]`](09-troubleshooting.md).
+> **Caveat — debug with Python 3.13 or newer.** On Python 3.12 and
+> older, setting breakpoints in a Python file that lives on
+> `Z:\oma-eng\src\` fails with `[WinError 1005] The volume does not
+> contain a recognized file system`. `debugpy` canonicalises every
+> breakpoint path through `os.path.realpath()` → `_getfinalpathname()`,
+> and WinFsp (the driver that surfaces virtiofs to Windows) doesn't
+> implement the volume-info FSCTL that Win32 call needs. Python 3.13.4+
+> (and every 3.14) treats that error as recoverable and falls back to
+> the plain path, so breakpoints bind directly on `Z:`. C# / `coreclr`
+> doesn't take this path at all, which is why the C# sample debugs fine
+> on any setup. Check the interpreter VS Code selected (status bar) is
+> 3.13+; if you're stuck on 3.12, see
+> [doc 09 § Python debugger fails with `[WinError 1005]`](09-troubleshooting.md#debugger-fails-with-winerror-1005-on-zoma-engsrc)
+> for the mirror-to-NTFS fallback.
 
 **C#** —
 [`src/strand7-api/csharp/HelloStrand7/.vscode/launch.json`](../src/strand7-api/csharp/HelloStrand7/.vscode/launch.json)

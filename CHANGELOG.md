@@ -13,6 +13,13 @@ versions follow [Semantic Versioning](https://semver.org/).
   keys didn't auto-repeat on Wayland and mouse-wheel scrolling was
   coarse.
 
+### Changed
+
+- **Docs 05, 07, 08, 09:** the guest now installs Python 3.13, and
+  Python is debugged directly on `Z:`. Python 3.13.4+ tolerates
+  WinFsp's `WinError 1005` in `os.path.realpath()`, so the `robocopy`
+  mirror to `C:\dev` is now only the fallback for Python 3.12.
+
 ## [0.1.0] - 2026-09-25
 
 First public release: a guide for running Windows CAD/FEA software in a

@@ -271,13 +271,18 @@ In an admin PowerShell with `winget`:
 ```powershell
 winget install --silent Microsoft.DotNet.SDK.8
 winget install --silent Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.ManagedDesktopBuildTools --add Microsoft.VisualStudio.Component.Windows10SDK"
-winget install --silent Python.Python.3.12
+winget install --silent Python.Python.3.13
 winget install --silent astral-sh.uv
 winget install --silent Git.Git
 ```
 
 The .NET 8 SDK covers Rhino 8 plugin development (Rhino 8 targets
 `net7.0-windows` for RhinoCommon; net8 SDK builds it fine).
+
+**Python 3.13 or newer** — breakpoints in `.py` files on the `Z:`
+share only bind on Python 3.13.4+ (or any 3.14). Older versions fail
+with `[WinError 1005]`; see
+[doc 09](09-troubleshooting.md#debugger-fails-with-winerror-1005-on-zoma-engsrc).
 
 **Python packaging** — `uv` is the fast Rust-based replacement for
 `pip` + `virtualenv` + `pip-tools`. Every Python sub-project in

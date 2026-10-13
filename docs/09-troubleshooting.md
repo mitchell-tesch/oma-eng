@@ -459,7 +459,7 @@ window. See doc 08 for the full table.
 ### Debugger fails with `[WinError 1005]` on `Z:\oma-eng\src\`
 
 Symptom — F5 on a Python file under `Z:\oma-eng\src\` (VS Code Remote-SSH
-into the guest) prints many copies of:
+into the guest) with Python 3.12 or older prints many copies of:
 
 ```
 Error adding watch dir: Z:\oma-eng\src\...
@@ -471,12 +471,13 @@ loaded and that the volume is not corrupted: 'Z:\\oma-eng\\src\\...'
 and no breakpoints bind, though the script itself runs to completion.
 
 Cause — `debugpy` canonicalises every path it sees (script, watch
-dirs, breakpoints) via `os.path.realpath()`, which on Windows Python
-3.10+ calls `_getfinalpathname` → `GetFinalPathNameByHandle`. WinFsp
-(the driver virtiofs uses to expose `Z:\` to Windows) doesn't
-implement the volume-info FSCTLs that Win32 call needs, so it returns
-error 1005. Nothing in the Python or `debugpy` config knobs bypasses
-this.
+dirs, breakpoints) via `os.path.realpath()`, which on Windows calls
+`_getfinalpathname` → `GetFinalPathNameByHandle`. WinFsp (the driver
+virtiofs uses to expose `Z:\` to Windows) doesn't implement the
+volume-info FSCTLs that Win32 call needs, so it returns error 1005.
+Python 3.12 and older treat that as fatal and raise. Python 3.13.4+
+(and every 3.14) lists 1005 among the errors non-strict `realpath()`
+recovers from, and returns the plain path instead.
 
 Not a Strand7 issue — this affects any `.py` file on the `Z:` share on
 this setup. C# / `coreclr` debugger uses raw paths and is unaffected.
@@ -484,15 +485,31 @@ And plain `py Z:\oma-eng\src\...\script.py` from PowerShell (no
 debugger) also works because the script code doesn't itself call
 `realpath` on its own directory.
 
-Fix — mirror the folder to a local NTFS path in the guest and debug
-from there:
+Fix — debug with Python 3.13.4 or newer:
+
+- **System Python** (e.g. `strand7-api/python`, whose `settings.json`
+  uses the system env manager): `winget install --silent
+  Python.Python.3.13`, then *Python: Select Interpreter* → 3.13.
+- **`uv` projects:** pin the version, then rebuild the venv:
+
+  ```powershell
+  uv python pin 3.13   # writes .python-version
+  uv sync
+  ```
+
+Check: `python -c "import os; print(os.path.realpath(r'Z:\oma-eng\README.md'))"`
+prints the path on 3.13.4+ and raises `WinError 1005` on 3.12.
+
+Fallback (stuck on 3.12) — mirror the folder to a local NTFS path in
+the guest and debug from there:
 
 ```powershell
 robocopy Z:\oma-eng\src\<project> C:\dev\<project> /MIR
 ```
 
 Open `C:\dev\<project>` in VS Code Remote-SSH and F5. Re-run the
-`robocopy` any time the Omarchy-side source changes. For Python
+`robocopy` any time the Omarchy-side source changes; `/MIR` overwrites
+edits made in the `C:` copy, so copy those back first. For Python
 projects driven by `uv` (`office-integration`, `spacegass-api`), also
 run `uv sync` in the local copy — the `.venv` shouldn't be mirrored
 from `Z:\oma-eng\src\`.
