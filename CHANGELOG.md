@@ -6,6 +6,13 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **VM template + doc 04:** virtio keyboard and mouse were added for
+  SPICE / Looking Glass input. With only the default PS/2 devices, held
+  keys didn't auto-repeat on Wayland and mouse-wheel scrolling was
+  coarse.
+
 ## [0.1.0] - 2026-09-25
 
 First public release: a guide for running Windows CAD/FEA software in a

@@ -422,7 +422,21 @@ bump `kvmfr static_size_mb` to `256` and the matching `size=128M` →
 ## 8. Input: evdev pass-through with hot-key switch (optional)
 
 Looking Glass forwards keyboard/mouse over SPICE (`rawMouse = yes` in
-the client config), which is enough for most CAD work. If you want raw
+the client config), which is enough for most CAD work. SPICE input goes
+to the virtio keyboard/mouse in the XML template (driver: `vioinput`,
+installed by `virtio-win-guest-tools`). Keep them. With only the default
+PS/2 devices, held keys don't repeat on Wayland and scrolling is
+coarse. To add them to an existing VM without a reboot, attach each
+device live and persistently:
+
+```bash
+for t in keyboard mouse; do
+  echo "<input type='$t' bus='virtio'/>" > /tmp/vi.xml
+  virsh -c qemu:///system attach-device windows-eng /tmp/vi.xml --live --config
+done
+```
+
+If you want raw
 evdev instead — e.g. a dedicated USB keyboard/mouse pair handed wholly
 to the guest — the XML template ships the block **commented out** at
 the bottom of `<qemu:commandline>`. Uncomment it and fill in the paths
