@@ -6,12 +6,15 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
+### Added
 
-- **VM template + doc 04:** virtio keyboard and mouse were added for
-  SPICE / Looking Glass input. With only the default PS/2 devices, held
-  keys didn't auto-repeat on Wayland and mouse-wheel scrolling was
-  coarse.
+- **`configs/looking-glass/patches/wayland-hires-scroll.patch`:** a fix
+  for the B7 Wayland client with high-resolution scroll wheels (e.g.
+  MX Master 3). One notch scrolled ~8 notches in the guest, and detent
+  rebound scrolled backwards. Doc 04 §3 covers the AUR rebuild +
+  `IgnorePkg`; doc 09 has the troubleshooting entry.
+  `install-looking-glass.sh` applies everything in `patches/`.
+  Upstream fixed this on `master`; drop the patch after B7.
 
 ### Changed
 

@@ -18,6 +18,7 @@ set -euo pipefail
 
 VERSION="${1:-B7}"
 PREFIX="${2:-/usr/local}"
+PATCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../configs/looking-glass/patches" && pwd)"
 
 BUILD_DIR="${TMPDIR:-/tmp}/looking-glass-build.$$"
 trap 'rm -rf "$BUILD_DIR"' EXIT
@@ -34,7 +35,15 @@ cd "$BUILD_DIR"
 echo "==> Downloading Looking Glass $VERSION"
 curl -fSL "https://looking-glass.io/artifact/$VERSION/source" -o lg.tar.gz
 tar xf lg.tar.gz
-cd looking-glass-*/client
+cd looking-glass-*/
+
+for p in "$PATCH_DIR"/*.patch; do
+    [[ -e "$p" ]] || continue
+    echo "==> Applying $(basename "$p")"
+    patch -p1 < "$p"
+done
+
+cd client
 
 echo "==> Configuring"
 mkdir -p build && cd build

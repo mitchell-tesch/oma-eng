@@ -31,6 +31,7 @@ never see it again. Grouped by symptom. For a failed VM start, read
 | `Cannot allocate memory` / hugepages on start | [HugePages allocation failure](#hugepages-allocation-failure) |
 | `vfio_container_dma_map … -22`, LG *Failed to locate a valid output device* | [Doc 04 §2b](04-looking-glass.md) (muxless laptop) |
 | Black Looking Glass window | [Client shows a black window](#client-shows-a-black-window) |
+| Guest scroll jumps several notches or kicks back | [Hi-res scroll wheel](#scroll-wheel-jumps-or-reverses-in-the-guest) |
 | *Microsoft Basic Render Driver* / *GDI Generic* | [Rhino](#rhino-uses-microsoft-basic-render-driver), [Strand7](#graphics-opengl-preferences-reads-gdi-generic) |
 | `Y:` and `Z:` swapped | [Drive letters swap](#drive-letters-swap-between-boots-y-and-z-trade-places) |
 | COM / GUI automation fails over `ssh` | [Session 0 vs console](#ssh-windows-eng-cant-drive-excel--rhino--display-settings) |
@@ -266,6 +267,31 @@ error in `/var/log/libvirt/qemu/windows-eng.log`. Compare
    for auth/perm errors on `/dev/shm/looking-glass`.
 5. Version mismatch between host client and guest host app? They must be
    the same major/minor.
+
+### Scroll wheel jumps or reverses in the guest
+
+One notch scrolls a page or more in Windows, and the page sometimes
+kicks back the other way as the wheel settles. Host apps scroll fine.
+
+Cause: a high-resolution wheel (e.g. Logitech MX Master 3) plus the B7
+Wayland client, which turns every partial scroll event into a full
+wheel notch. Fixed upstream on `master` (development builds), not in
+stable B7. Guest drivers (`vioinput`) are not involved. Confirm with
+`grep -A9 '<mouse name>' /proc/bus/input/devices`: bit 11 set in
+`B: REL=` (e.g. `1943`) means a hi-res wheel.
+
+Fix: rebuild the client with
+[`wayland-hires-scroll.patch`](../configs/looking-glass/patches/wayland-hires-scroll.patch)
+and hold it with `IgnorePkg`. Steps in
+[doc 04 §3](04-looking-glass.md#high-resolution-scroll-wheels-mx-master-and-similar).
+Workaround without rebuilding: evdev pass-through (doc 04 §8). QEMU
+reads the standard per-notch wheel events.
+
+If the patch is installed but scrolling went bad again, check
+`pacman -Q looking-glass` still shows the local `pkgrel` (e.g. `B7-7.1`).
+A plain AUR version means an update replaced it, so `IgnorePkg` is
+missing or outside `[options]` (`pacman-conf IgnorePkg` prints
+nothing).
 
 ### Mouse works but keyboard is dead
 

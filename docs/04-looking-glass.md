@@ -233,6 +233,53 @@ sudo pacman -S --needed base-devel cmake fontconfig spice-protocol \
 scripts/install-looking-glass.sh <version>       # e.g. B7 or B7-rc1
 ```
 
+Option B applies every patch in
+[`configs/looking-glass/patches/`](../configs/looking-glass/patches/)
+automatically.
+
+### High-resolution scroll wheels (MX Master and similar)
+
+The B7 Wayland client sends one full wheel notch to the guest for
+**every** scroll event, whatever its size. Hi-res wheels (Logitech MX
+Master 2S/3/3S, many recent mice) split each notch into ~8 events, so
+one notch scrolls ~8 notches in Windows, and the small rebound when the
+wheel settles into a detent registers as a full notch the other way.
+Check your mouse: a `B: REL=` mask with bit 11 set (`REL_WHEEL_HI_RES`,
+e.g. `1943`) in `grep -A9 '<mouse name>' /proc/bus/input/devices`
+means it's affected.
+
+[`wayland-hires-scroll.patch`](../configs/looking-glass/patches/wayland-hires-scroll.patch)
+adds up partial events and sends one notch per detent. To use it with
+the AUR package (option A):
+
+```bash
+yay -G looking-glass && cd looking-glass     # or cd ~/.cache/yay/looking-glass
+cp ~/dev/oma-eng/configs/looking-glass/patches/wayland-hires-scroll.patch .
+# PKGBUILD: append "wayland-hires-scroll.patch" to source=(),
+# and bump pkgrel (e.g. 7 -> 7.1) to tag the local build.
+updpkgsums                                     # pacman-contrib
+makepkg -sf
+sudo pacman -U looking-glass-2:B7-*.pkg.tar.zst  # client only
+```
+
+The PKGBUILD's `prepare()` already applies every `*.patch` in
+`source=()`. Then stop `yay -Syu` replacing it with an unpatched build
+— add under **`[options]`** in `/etc/pacman.conf` (pacman ignores it in
+any other section):
+
+```ini
+[options]
+IgnorePkg = looking-glass
+```
+
+This also suits the version lock-step above: client updates become a
+deliberate step done together with the guest host-app. On each update,
+re-apply the patch and rebuild. Upstream `master` already accumulates
+scroll the same way (`wlInputPointerAxis` in
+`client/displayservers/Wayland/input_event.c`, in development builds
+since Aug 2026), so drop the patch at the first stable release after
+B7.
+
 ## 4. Install the Looking Glass host application in the guest
 
 Download the matching Windows installer from

@@ -1,0 +1,31 @@
+--- a/client/displayservers/Wayland/input.c	2026-10-15 13:28:21.547062709 +1000
++++ b/client/displayservers/Wayland/input.c	2026-10-15 13:28:28.778898316 +1000
+@@ -91,12 +91,22 @@
+   if (axis != WL_POINTER_AXIS_VERTICAL_SCROLL)
+     return;
+ 
+-  int button = value > 0 ?
+-    5 /* SPICE_MOUSE_BUTTON_DOWN */ :
+-    4 /* SPICE_MOUSE_BUTTON_UP */;
+-  app_handleButtonPress(button);
+-  app_handleButtonRelease(button);
+-  app_handleWheelMotion(wl_fixed_to_double(value) / 15.0);
++  // Hi-res wheels and touchpads send fractions of a notch; 15.0 == one notch.
++  static double accum = 0.0;
++  const double delta = wl_fixed_to_double(value);
++  accum += delta;
++
++  while (accum >= 15.0 || accum <= -15.0)
++  {
++    int button = accum > 0 ?
++      5 /* SPICE_MOUSE_BUTTON_DOWN */ :
++      4 /* SPICE_MOUSE_BUTTON_UP */;
++    app_handleButtonPress(button);
++    app_handleButtonRelease(button);
++    accum += accum > 0 ? -15.0 : 15.0;
++  }
++
++  app_handleWheelMotion(delta / 15.0);
+ }
+ 
+ static int mapWaylandToSpiceButton(uint32_t button)
