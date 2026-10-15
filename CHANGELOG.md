@@ -12,7 +12,9 @@ versions follow [Semantic Versioning](https://semver.org/).
   report of pending, drifted and newly released versions of the
   components this setup depends on, against the last validated set.
   `--bump NAME` records a tested version; a `skip:VERSION` note marks a
-  release as reviewed and declined. Doc 02 §0.
+  release as reviewed and declined. Looking Glass is checked including
+  release candidates (`github-pre`), so B8-rc1 is flagged on release.
+  Doc 02 §0.
 
 - **`configs/looking-glass/patches/wayland-hires-scroll.patch`:** a fix
   for the B7 Wayland client with high-resolution scroll wheels (e.g.

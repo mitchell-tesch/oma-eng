@@ -89,6 +89,13 @@ github_latest() {
         "https://api.github.com/repos/$1/releases/latest" | jq -r '.tag_name // empty'
 }
 
+# Newest release including pre-releases (release candidates); API lists newest first.
+github_newest() {
+    fetch -H 'Accept: application/vnd.github+json' \
+        "https://api.github.com/repos/$1/releases?per_page=10" \
+        | jq -r '[.[] | select(.draft | not)] | first | .tag_name // empty'
+}
+
 virtio_latest() {
     fetch "$VIRTIO_URL" | grep -oE 'virtio-win-[0-9.]+[0-9]\.iso' \
         | sed -E 's/virtio-win-(.*)\.iso/\1/' | sort -uV | tail -1
@@ -111,6 +118,7 @@ current_version() {
     case "$kind" in
         pkg|aur)     installed_version "$name" ;;
         github)      github_latest "$name" ;;
+        github-pre)  github_newest "$name" ;;
         virtio-win)  virtio_latest ;;
         blender-ext) blender_ext_latest "$name" | awk '{print $1}' ;;
     esac
@@ -182,13 +190,14 @@ while read -r kind name known note <&3; do
                 row OK "$name" "$inst"
             fi
             ;;
-        github|virtio-win|blender-ext)
+        github|github-pre|virtio-win|blender-ext)
             if [[ $offline == 1 ]]; then
                 row OK "$name" "$known (not checked: --offline)"
                 continue
             fi
             case "$kind" in
                 github)      latest="$(github_latest "$name" || true)" ;;
+                github-pre)  latest="$(github_newest "$name" || true)" ;;
                 virtio-win)  latest="$(virtio_latest || true)" ;;
                 blender-ext) latest="$(blender_ext_latest "$name" || true)" ;;
             esac
