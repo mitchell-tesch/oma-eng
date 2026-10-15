@@ -28,6 +28,15 @@ omarchy update
 (Or *Update ▸ Omarchy* from the Omarchy menu with `Super + Space`.)
 Reboot if the kernel updated.
 
+Once the VM is set up, run
+[`scripts/check-updates`](../scripts/check-updates) before each
+`omarchy update`. It compares the components this setup depends on
+(QEMU, libvirt, OVMF, kernel, Hyprland, Looking Glass, guest drivers,
+Bonsai) with the versions last validated in
+[`configs/known-good.conf`](../configs/known-good.conf), and flags
+pending updates, unreviewed drift and new upstream releases. After
+testing an update, record it with `scripts/check-updates --bump NAME`.
+
 Then take one more snapshot, right before this doc changes the kernel
 command line, initramfs and drivers. It appears under **Snapshots** in
 the Limine boot menu, so you can boot back to it if a later step leaves

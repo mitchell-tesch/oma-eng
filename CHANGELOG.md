@@ -8,6 +8,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`scripts/check-updates` + `configs/known-good.conf`:** a read-only
+  report of pending, drifted and newly released versions of the
+  components this setup depends on, against the last validated set.
+  `--bump NAME` records a tested version; a `skip:VERSION` note marks a
+  release as reviewed and declined. Doc 02 §0.
+
 - **`configs/looking-glass/patches/wayland-hires-scroll.patch`:** a fix
   for the B7 Wayland client with high-resolution scroll wheels (e.g.
   MX Master 3). One notch scrolled ~8 notches in the guest, and detent
@@ -17,6 +23,12 @@ versions follow [Semantic Versioning](https://semver.org/).
   Upstream fixed this on `master`; drop the patch after B7.
 
 ### Changed
+
+- **Doc 14, doc 09:** Bonsai moves to 0.9.0 in a portable official
+  Blender 5.2.2 (bundled Python 3.13), replacing portable Blender 4.5 +
+  Bonsai 0.8.5. A `portable/` folder keeps its config apart from Arch's
+  Blender 5.2 (Python 3.14). The `blender-bim` launcher now opens `.ifc`
+  arguments through Bonsai; `blender model.ifc` never worked.
 
 - **Docs 05, 07, 08, 09:** the guest now installs Python 3.13, and
   Python is debugged directly on `Z:`. Python 3.13.4+ tolerates

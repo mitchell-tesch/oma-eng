@@ -887,32 +887,40 @@ Remove any of the above and you get one of these mid-conversion:
 
 ### `blender --command extension install bonsai` → *incompatible (Python 3.14 vs 3.13)*
 
-As of this doc, the Bonsai release on extensions.blender.org is
-`v0.8.5-post1`, `blender_version_max=5.1.0`, built for Python 3.13.
-Blender 5.2 (Omarchy pacman) uses Python 3.14 and refuses to load
-the extension. Two workarounds:
+Bonsai `0.9.0` on extensions.blender.org needs Blender 5.1+ and ships
+Python 3.13 wheels only. Blender 5.2 from pacman uses Python 3.14 and
+refuses to load it. Two workarounds:
 
-1. **Blender 4.5 LTS portable** (recommended — side-by-side with
-   the pacman Blender 5.2, no root):
+1. **Blender 5.2 LTS portable** from blender.org (recommended; it
+   bundles Python 3.13, runs side by side with the pacman Blender, no
+   root). Full steps, including the `blender-bim` launcher, in
+   [doc 14](14-native-omarchy-tooling.md#install-blender--which-version):
 
    ```bash
    mkdir -p ~/tools && cd ~/tools
-   curl -fsSLO https://download.blender.org/release/Blender4.5/blender-4.5.4-linux-x64.tar.xz
-   tar xf blender-4.5.4-linux-x64.tar.xz
-   cat > ~/.local/bin/blender-bim <<'SH'
-   #!/usr/bin/env bash
-   exec "$HOME/tools/blender-4.5.4-linux-x64/blender" --online-mode "$@"
-   SH
-   chmod +x ~/.local/bin/blender-bim
+   curl -fsSLO https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+   tar xf blender-5.2.2-linux-x64.tar.xz
+   mkdir blender-5.2.2-linux-x64/portable   # don't share ~/.config/blender/5.2
    blender-bim --command extension install --enable bonsai
    ```
 
-2. **AUR `ifcopenshell` (0.9.0-alpha)** builds against system Python
-   3.14 and bundles a Bonsai `.zip` for the current Blender. Heavy
-   source build (boost, cgal, opencascade).
+   Without the `portable/` folder, both 5.2 builds share
+   `~/.config/blender/5.2/`. Bonsai then lands in the system Blender's
+   config too, and it shows this error on every start. Fix with
+   `blender --command extension remove bonsai`.
 
-Switch back to system Blender 5.2 once upstream Bonsai ships a
-compatible release (typically 2–4 weeks after a new Blender LTS).
+2. **AUR `ifcopenshell`** builds against system Python 3.14 and
+   bundles a Bonsai `.zip` for the current Blender. Heavy source build
+   (boost, cgal, opencascade).
+
+Switch back to system Blender once Bonsai ships Python 3.14 wheels.
+
+### `blender model.ifc` → *File format is not supported*
+
+Blender's command line only opens `.blend` files; Bonsai doesn't
+register `.ifc` there. Use *File ▸ Open IFC Project* in Bonsai, or the
+`blender-bim` launcher from doc 14, which hands an `.ifc` argument to
+`bpy.ops.bim.load_project` once the window is up.
 
 ### `forallpeople` prints `SyntaxWarning: invalid escape sequence`
 

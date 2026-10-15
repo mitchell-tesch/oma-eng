@@ -71,15 +71,22 @@ Blender ships two flavours on Omarchy:
 | Purpose | Where | Blender | Python |
 |---|---|---|---|
 | General 3D / Cycles rendering / anything **not** Bonsai | `sudo pacman -S blender` | 5.2 LTS | 3.14 |
-| **Bonsai / IFC authoring** | Blender 4.5 LTS portable from blender.org | 4.5.4 LTS | 3.11 |
+| **Bonsai / IFC authoring** | Blender 5.2 LTS portable from blender.org | 5.2.2 LTS | 3.13 |
 
-**Why two.** As of this doc, the Bonsai release on
-extensions.blender.org is `v0.8.5-post1`, declared
-`blender_version_max=5.1.0`, built against Python 3.13. Blender 5.2
-ships with Python 3.14 and refuses to load the extension
-(`Extension bl_ext.blender_org.bonsai is incompatible`). Upstream
-Bonsai typically catches up 2–4 weeks after a new Blender LTS —
-switch back to the system Blender once a compatible release lands.
+**Why two.** Bonsai `0.9.0` on extensions.blender.org needs Blender
+5.1+ and ships Python 3.13 wheels only. Arch's Blender 5.2 is built
+against system Python 3.14 and refuses to load it
+(`Extension bl_ext.user_default.bonsai is incompatible (This Python
+version (3.14) isn't compatible with (3.13))`). The official
+blender.org build bundles Python 3.13, so it loads Bonsai fine. Switch
+back to the system Blender once Bonsai ships Python 3.14 wheels
+(`scripts/check-updates` flags new Bonsai releases).
+
+Both are 5.2, so by default they'd share `~/.config/blender/5.2/`, and
+the system Blender would then show an incompatible-extension error at
+every start. An empty `portable/` folder next to the portable
+build's `blender` binary makes it keep its config and extensions there
+instead.
 
 ```bash
 # General-purpose Blender (repo):
@@ -87,16 +94,34 @@ sudo pacman -S --needed blender
 
 # Bonsai-compatible Blender (portable to ~/tools/, no root):
 mkdir -p ~/tools && cd ~/tools
-curl -fsSLO https://download.blender.org/release/Blender4.5/blender-4.5.4-linux-x64.tar.xz
-tar xf blender-4.5.4-linux-x64.tar.xz
+curl -fsSLO https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+curl -fsSLO https://download.blender.org/release/Blender5.2/blender-5.2.2.sha256
+grep linux-x64.tar.xz blender-5.2.2.sha256 | sha256sum -c -
+tar xf blender-5.2.2-linux-x64.tar.xz
+mkdir blender-5.2.2-linux-x64/portable      # isolate config from system 5.2
 
-# Launcher shim so the LTS+Bonsai combo is on PATH as `blender-bim`:
+# Launcher on PATH as `blender-bim`. Blender's CLI only opens .blend
+# files, so an .ifc argument is handed to Bonsai once the window is up.
 cat > ~/.local/bin/blender-bim <<'SH'
 #!/usr/bin/env bash
-exec "$HOME/tools/blender-4.5.4-linux-x64/blender" --online-mode "$@"
+B="$HOME/tools/blender-5.2.2-linux-x64/blender"
+if [[ $# -ge 1 && "${1,,}" == *.ifc ]]; then
+    BONSAI_OPEN_IFC="$(realpath "$1")"
+    export BONSAI_OPEN_IFC
+    shift
+    exec "$B" --online-mode --python-expr '
+import bpy, os
+def _open():
+    win = bpy.context.window_manager.windows[0]
+    with bpy.context.temp_override(window=win):
+        bpy.ops.bim.load_project(filepath=os.environ["BONSAI_OPEN_IFC"])
+bpy.app.timers.register(_open, first_interval=0.5)
+' "$@"
+fi
+exec "$B" --online-mode "$@"
 SH
 chmod +x ~/.local/bin/blender-bim
-blender-bim --version   # Blender 4.5.4 LTS
+blender-bim --version   # Blender 5.2.2 LTS
 ```
 
 ### Install the Bonsai add-on
@@ -132,11 +157,12 @@ Interactive:
 ```bash
 cd ~/dev/oma-eng/src/native-tooling
 uv sync                     # first time only
-blender-bim samples/smoke.ifc
+blender-bim samples/smoke.ifc       # or File ▸ Open IFC Project
 # In Blender:
 #   Switch to the BIM workspace tab (added by Bonsai)
 #   The IFC spatial tree (Project → Site → Building → Storey)
-#   shows Ground with two IfcColumn objects.
+#   shows Ground with two IfcColumn objects. smoke.ifc has no
+#   geometry, so the 3D view stays empty.
 ```
 
 Headless smoke test (proves the addon loads and Bonsai's
@@ -390,7 +416,7 @@ rm -rf "$HOME/.local/share/FreeCAD/v1-1/AdditionalPythonPackages"
 | Task | Reach for |
 |---|---|
 | Quick look at an incoming IFC, measure something, check a level | **FreeCAD** — one pacman package, opens fast, lazy geometry |
-| Serious IFC authoring/editing, drawing sheets, QTO UI | **Bonsai** — deeper IFC toolset, but needs the portable Blender 4.5 |
+| Serious IFC authoring/editing, drawing sheets, QTO UI | **Bonsai** — deeper IFC toolset, but needs the portable Blender 5.2 |
 | Batch extraction, CI checks, anything repeatable | **`ifcopenshell` scripts** in `src/native-tooling/` (below) |
 | FEA on the imported geometry | Export STEP from FreeCAD → Strand7 / ETABS in the guest |
 
@@ -563,7 +589,7 @@ SciPy / SymPy / matplotlib are all in `src/native-tooling/`'s
   `~/.local/share/FreeCAD/v1-1/AdditionalPythonPackages/py314/`.
 - `freecad some-model.ifc` opens the project in the tree and
   expanding an element builds its shape.
-- `blender-bim --version` prints *Blender 4.5.4 LTS*.
+- `blender-bim --version` prints *Blender 5.2.2 LTS*.
 - The Bonsai add-on loads: opening
   `src/native-tooling/samples/smoke.ifc` in `blender-bim` shows the
   spatial tree in the BIM workspace, or the headless test

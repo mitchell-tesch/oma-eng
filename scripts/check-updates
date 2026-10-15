@@ -1,0 +1,216 @@
+#!/usr/bin/env bash
+# check-updates — report updates to the components this setup depends on,
+# compared with the versions last validated in configs/known-good.conf.
+# Read-only: installs nothing and never touches the pacman sync database.
+#
+# Statuses:
+#   PENDING  repo/AUR has a newer version than installed; review before -Syu
+#   DRIFT    installed differs from known-good (updated without review);
+#            re-test the VM, then --bump
+#   NEW      upstream release differs from known-good; review and decide
+#   WARN     lookup failed (network, API change)
+#
+# A `skip:VERSION` token in an entry's notes marks that release as reviewed
+# and declined: it reports OK until a different version appears.
+#
+# Usage:
+#     scripts/check-updates                 # full report
+#     scripts/check-updates --offline       # installed-vs-known-good only
+#     scripts/check-updates --quiet         # only rows that need attention
+#     scripts/check-updates --bump NAME...  # record current version as known-good
+#     scripts/check-updates --help
+#
+# Exit: 0 nothing to review, 2 something to review, 1 usage/config error.
+#
+# Needs: pacman, curl, jq; checkupdates (pacman-contrib) for PENDING repo rows.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+CONF="$REPO_ROOT/configs/known-good.conf"
+VIRTIO_URL="https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/"
+
+usage() {
+    sed -n '2,25p' "$0"
+    exit "${1:-0}"
+}
+
+offline=0
+quiet=0
+bump=0
+bump_names=()
+for arg in "$@"; do
+    case "$arg" in
+        -h|--help)  usage 0 ;;
+        --offline)  offline=1 ;;
+        --quiet)    quiet=1 ;;
+        --bump)     bump=1 ;;
+        -*)         echo "Unknown arg: $arg" >&2; usage 1 ;;
+        *)          [[ $bump == 1 ]] || { echo "Unexpected arg: $arg" >&2; usage 1; }
+                    bump_names+=("$arg") ;;
+    esac
+done
+
+[[ -f "$CONF" ]] || { echo "Missing $CONF" >&2; exit 1; }
+for cmd in pacman curl jq; do
+    command -v "$cmd" >/dev/null || { echo "Missing dependency: $cmd" >&2; exit 1; }
+done
+
+fetch() { curl -fsSL --max-time 20 "$@"; }
+
+installed_version() { pacman -Q "$1" 2>/dev/null | awk '{print $2}'; }
+
+# Cached lookups so each source is hit once per run.
+pending_repo=""
+pending_repo_loaded=0
+repo_pending_version() {
+    if [[ $pending_repo_loaded == 0 ]]; then
+        pending_repo_loaded=1
+        if command -v checkupdates >/dev/null; then
+            # checkupdates exits 2 when there is nothing to update.
+            pending_repo="$(checkupdates 2>/dev/null || true)"
+        fi
+    fi
+    awk -v n="$1" '$1 == n {print $4}' <<<"$pending_repo"
+}
+
+aur_json=""
+aur_version() {
+    if [[ -z "$aur_json" ]]; then
+        local args
+        args="$(awk '$1 == "aur" {printf "&arg[]=%s", $2}' "$CONF")"
+        aur_json="$(fetch "https://aur.archlinux.org/rpc/v5/info?${args#&}" || echo '{}')"
+    fi
+    jq -r --arg n "$1" '.results[]? | select(.Name == $n) | .Version' <<<"$aur_json"
+}
+
+github_latest() {
+    fetch -H 'Accept: application/vnd.github+json' \
+        "https://api.github.com/repos/$1/releases/latest" | jq -r '.tag_name // empty'
+}
+
+virtio_latest() {
+    fetch "$VIRTIO_URL" | grep -oE 'virtio-win-[0-9.]+[0-9]\.iso' \
+        | sed -E 's/virtio-win-(.*)\.iso/\1/' | sort -uV | tail -1
+}
+
+blender_ext_json=""
+blender_ext_latest() {
+    if [[ -z "$blender_ext_json" ]]; then
+        blender_ext_json="$(fetch 'https://extensions.blender.org/api/v1/extensions/' || echo '{}')"
+    fi
+    jq -r --arg id "$1" \
+        '[.data[]? | select(.id == $id and ((.platforms // ["linux-x64"]) | index("linux-x64")))]
+         | first | if . then "\(.version) (blender >= \(.blender_version_min)\(if .blender_version_max then ", < " + .blender_version_max else "" end))" else empty end' \
+        <<<"$blender_ext_json"
+}
+
+# Current version of an entry: installed for pkg/aur, upstream latest otherwise.
+current_version() {
+    local kind="$1" name="$2"
+    case "$kind" in
+        pkg|aur)     installed_version "$name" ;;
+        github)      github_latest "$name" ;;
+        virtio-win)  virtio_latest ;;
+        blender-ext) blender_ext_latest "$name" | awk '{print $1}' ;;
+    esac
+}
+
+if [[ $bump == 1 ]]; then
+    [[ ${#bump_names[@]} -gt 0 ]] || { echo "--bump needs at least one NAME" >&2; exit 1; }
+    for name in "${bump_names[@]}"; do
+        kind="$(awk -v n="$name" '$1 !~ /^#/ && $2 == n {print $1; exit}' "$CONF")"
+        [[ -n "$kind" ]] || { echo "Not in $(basename "$CONF"): $name" >&2; exit 1; }
+        new="$(current_version "$kind" "$name")"
+        [[ -n "$new" ]] || { echo "Could not determine current version of $name" >&2; exit 1; }
+        tmp="$(mktemp)"
+        awk -v n="$name" -v v="$new" '
+            $1 !~ /^#/ && $2 == n {
+                note = $0
+                sub(/^[[:space:]]*[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]*/, "", note)
+                gsub(/[[:space:]]*skip:[^[:space:]]+/, "", note)
+                printf "%-12s %-37s %-15s %s\n", $1, $2, v, note
+                next
+            }
+            { print }' "$CONF" > "$tmp"
+        cat "$tmp" > "$CONF"
+        rm -f "$tmp"
+        echo "known-good: $name -> $new"
+    done
+    exit 0
+fi
+
+review=0
+row() {
+    local status="$1" name="$2" detail="$3" note="${4:-}"
+    [[ $status != OK ]] && review=1
+    [[ $quiet == 1 && $status == OK ]] && return
+    printf '%-8s %-38s %s\n' "$status" "$name" "$detail"
+    [[ $status != OK && -n "$note" ]] && printf '%-8s %-38s %s\n' "" "" "-> $note"
+    return 0
+}
+
+printf '%-8s %-38s %s\n' STATUS COMPONENT DETAIL
+while read -r kind name known note <&3; do
+    [[ -z "$kind" || "$kind" == \#* ]] && continue
+    skip=""
+    [[ "$note" =~ skip:([^[:space:]]+) ]] && skip="${BASH_REMATCH[1]}"
+
+    case "$kind" in
+        pkg|aur)
+            inst="$(installed_version "$name")"
+            if [[ -z "$inst" ]]; then
+                row WARN "$name" "not installed (known-good $known)" "$note"
+                continue
+            fi
+            avail=""
+            if [[ $offline == 0 ]]; then
+                if [[ $kind == pkg ]]; then
+                    avail="$(repo_pending_version "$name")"
+                else
+                    avail="$(aur_version "$name")"
+                    [[ -n "$avail" && $(vercmp "$avail" "$inst") -gt 0 ]] || avail=""
+                fi
+            fi
+            if [[ -n "$avail" && "$avail" == "$skip" ]]; then
+                row OK "$name" "$inst ($avail reviewed, skipped)"
+            elif [[ -n "$avail" ]]; then
+                row PENDING "$name" "$inst -> $avail available (known-good $known)" "$note"
+            elif [[ "$inst" != "$known" ]]; then
+                row DRIFT "$name" "installed $inst, known-good $known" "$note"
+            else
+                row OK "$name" "$inst"
+            fi
+            ;;
+        github|virtio-win|blender-ext)
+            if [[ $offline == 1 ]]; then
+                row OK "$name" "$known (not checked: --offline)"
+                continue
+            fi
+            case "$kind" in
+                github)      latest="$(github_latest "$name" || true)" ;;
+                virtio-win)  latest="$(virtio_latest || true)" ;;
+                blender-ext) latest="$(blender_ext_latest "$name" || true)" ;;
+            esac
+            if [[ -z "$latest" ]]; then
+                row WARN "$name" "lookup failed (known-good $known)" "$note"
+            elif [[ "${latest%% *}" == "$skip" ]]; then
+                row OK "$name" "$known ($skip reviewed, skipped)"
+            elif [[ "${latest%% *}" != "$known" ]]; then
+                row NEW "$name" "$latest released (known-good $known)" "$note"
+            else
+                row OK "$name" "$known"
+            fi
+            ;;
+        *)
+            row WARN "$name" "unknown kind '$kind' in known-good.conf" ""
+            ;;
+    esac
+done 3< "$CONF"
+
+if [[ $review == 1 ]]; then
+    echo
+    echo "Review the rows above. To adopt: snapshot, update, test, then"
+    echo "  scripts/check-updates --bump NAME"
+    exit 2
+fi
