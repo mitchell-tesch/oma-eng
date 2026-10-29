@@ -6,6 +6,18 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`scripts/detect-host.sh --vcpupin`:** on CPUs without SMT (e.g.
+  i7-9700K) it suggested twice as many vCPUs as `<vcpupin>` lines and
+  `threads='2'`. vCPU count and topology now follow the real threads
+  per core, and symmetric non-SMT CPUs keep 2 cores for the host.
+
+- **`scripts/list-pci-for-passthrough.sh`:** now lists every function
+  on the dGPU's slot (Turing RTX 20xx USB 3.1 + USB-C UCSI included) and
+  puts them all in the suggested `ids=`. Previously the UCSI function
+  was not shown and the USB function was left out of `ids=`.
+
 ### Added
 
 - **`scripts/check-updates` + `configs/known-good.conf`:** a read-only
