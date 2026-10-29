@@ -23,14 +23,37 @@ for arg in "$@"; do
     esac
 done
 
-collect_ids() {
+# Print "address<TAB>vendor:device<TAB>description" for every function on
+# the same PCI slot as a matching GPU (VGA/3D controller), plus any other
+# matching audio device. Desktop cards can expose more than VGA + audio
+# (e.g. Turing RTX 20xx: USB 3.1 controller at .2 and USB-C UCSI at .3);
+# all functions share the GPU's IOMMU group, so every one must be bound to
+# vfio-pci and passed through.
+collect_functions() {
     lspci -Dnn | awk -v v="$vendor" '
-        /VGA compatible controller|3D controller|Audio device/ {
+        {
             match($0, /\[([0-9a-f]{4}:[0-9a-f]{4})\]/, id)
             if (id[1] == "") next
             if (v != "" && substr(id[1], 1, 4) != v) next
-            print id[1]
-        }' | paste -sd, -
+            n++
+            addr[n] = $1
+            ids[n] = id[1]
+            slot[n] = $1; sub(/\.[0-7]$/, "", slot[n])
+            desc = $0; sub(/^[^ ]+ +/, "", desc)
+            sub(/ \[[0-9a-f]{4}:[0-9a-f]{4}\].*/, "", desc)
+            text[n] = desc
+            if ($0 ~ /VGA compatible controller|3D controller/) gpu_slot[slot[n]] = 1
+            if ($0 ~ /Audio device/) audio[n] = 1
+        }
+        END {
+            for (i = 1; i <= n; i++)
+                if ((slot[i] in gpu_slot) || (i in audio))
+                    printf "%s\t%s\t%s\n", addr[i], ids[i], text[i]
+        }'
+}
+
+collect_ids() {
+    collect_functions | cut -f2 | awk '!seen[$0]++' | paste -sd, -
 }
 
 if [[ $write_config -eq 1 ]]; then
@@ -57,21 +80,13 @@ EOF
     exit 0
 fi
 
-lspci -Dnn | awk -v v="$vendor" '
-    BEGIN {
-        printf "%-14s %-40s %-15s\n", "PCI address", "Device", "vendor:device"
-        printf "%-14s %-40s %-15s\n", "-----------", "------", "-------------"
-    }
-    /VGA compatible controller|3D controller|Audio device|USB controller/ {
-        match($0, /\[([0-9a-f]{4}:[0-9a-f]{4})\]/, id)
-        if (id[1] == "") next
-        if (v != "" && substr(id[1], 1, 4) != v) next
-        addr=$1
-        # trim addr, class label, id
-        $1=""; sub(/^[ \t]+/, "", $0)
-        sub(/ \[[0-9a-f]{4}:[0-9a-f]{4}\] .*/, "", $0)
-        printf "%-14s %-40s %-15s\n", addr, $0, id[1]
-    }'
+{
+    printf "%-14s %-40s %-15s\n" "PCI address" "Device" "vendor:device"
+    printf "%-14s %-40s %-15s\n" "-----------" "------" "-------------"
+    collect_functions | while IFS=$'\t' read -r addr id desc; do
+        printf "%-14s %-40s %-15s\n" "$addr" "$desc" "$id"
+    done
+}
 
 echo
 echo "For configs/modprobe.d/vfio.conf (see docs/02-host-setup.md §3):"
@@ -80,6 +95,25 @@ if [[ -n "$ids" ]]; then
     echo "    options vfio-pci ids=${ids} disable_vga=1"
 else
     echo "    (no matching devices found)"
+fi
+
+# --- Extra functions advisory -------------------------------------------
+# A USB controller on the card is usually claimed by the built-in xhci_pci
+# driver before vfio-pci loads, so `ids=` alone may not bind it at boot.
+# That's fine as long as every function has a managed='yes' <hostdev>:
+# libvirt rebinds it to vfio-pci when the guest starts.
+if [[ -n "$ids" ]]; then
+    extra="$(collect_functions | grep -vE $'\t(VGA compatible controller|3D controller|Audio device)' || true)"
+    if [[ -n "$extra" ]]; then
+        echo
+        echo "Note: the card exposes extra function(s) besides VGA/audio:"
+        while IFS=$'\t' read -r addr id desc; do
+            echo "    $addr  $id  $desc"
+        done <<< "$extra"
+        echo "They share the GPU's IOMMU group: add one managed='yes' <hostdev>"
+        echo "per function in the guest XML. The USB function may stay on"
+        echo "xhci_hcd until the guest starts — libvirt rebinds it then."
+    fi
 fi
 
 # --- Muxless / mobile-Optimus advisory ---------------------------------

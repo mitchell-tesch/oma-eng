@@ -81,8 +81,9 @@ fi
 # to a single tier. The guest is pinned to top-tier (P-)cores only — mixing
 # P and E cores in one guest wrecks QEMU scheduling under CAD/FEA load.
 # The host keeps 1 top-tier core (for Hyprland + Looking Glass) plus every
-# lower-tier core. Emulator + iothread land on lower-tier cores when
-# available; on symmetric CPUs they share the reserved host top-tier core.
+# lower-tier core — 2 top-tier cores on symmetric CPUs without SMT, where a
+# single core would be too little. Emulator + iothread land on lower-tier
+# cores when available; otherwise they share the reserved host core(s).
 
 print_vcpupin_block() {
     if ! command -v lscpu >/dev/null 2>&1; then
@@ -155,7 +156,17 @@ print_vcpupin_block() {
         hybrid_note="Hybrid CPU: ${#top_cores[@]} top-tier @ ~${top_mhz%.*} MHz, ${#lower_cores[@]} lower-tier. Guest pinned to top tier only."
     fi
 
+    # Threads per top-tier core: 2 with SMT/HT, 1 without (e.g. i7-9700K).
+    local -a first_core_cpus
+    read -ra first_core_cpus <<< "${core_cpus[${top_cores[0]}]}"
+    local smt=${#first_core_cpus[@]}
+
+    # Without SMT siblings or lower-tier cores, one reserved core would have
+    # to carry Hyprland, Looking Glass, the emulator and the iothread — keep 2.
     local host_top=1
+    if (( smt == 1 && ${#lower_cores[@]} == 0 )); then
+        host_top=2
+    fi
     if (( ${#top_cores[@]} - host_top < 3 )); then
         echo "  (Fewer than 3 usable top-tier cores after reserving host — refusing to suggest a bad pinning.)" >&2
         return 1
@@ -167,9 +178,9 @@ print_vcpupin_block() {
     if [[ -n "$hybrid_note" ]]; then
         echo "     $hybrid_note"
     fi
-    echo "     Guest: ${guest_top} top-tier physical cores x SMT = $(( guest_top * 2 )) vCPUs."
-    echo "     Host keeps 1 top-tier core plus all lower-tier cores. -->"
-    echo "<vcpu placement='static'>$(( guest_top * 2 ))</vcpu>"
+    echo "     Guest: ${guest_top} top-tier physical cores x ${smt} thread(s) = $(( guest_top * smt )) vCPUs."
+    echo "     Host keeps ${host_top} top-tier core(s) plus all lower-tier cores. -->"
+    echo "<vcpu placement='static'>$(( guest_top * smt ))</vcpu>"
     echo "<cputune>"
 
     local vcpu=0
@@ -208,7 +219,7 @@ print_vcpupin_block() {
     echo "<iothreads>1</iothreads>"
 
     echo "<!-- Matching <cpu> topology (paste over the existing one):"
-    echo "     <topology sockets='1' dies='1' cores='${guest_top}' threads='2'/> -->"
+    echo "     <topology sockets='1' dies='1' cores='${guest_top}' threads='${smt}'/> -->"
 }
 
 if [[ $only_vcpupin -eq 1 ]]; then

@@ -388,8 +388,13 @@ lspci -nnk -d 10de:*                          # show driver in use
 
 `Kernel driver in use: vfio-pci` on **every** Nvidia function listed
 by `list-pci-for-passthrough.sh` is the goal. Desktop cards typically
-list two functions (VGA + audio); muxless mobile Optimus cards list
-one (a 3D controller with no audio silicon on the bus).
+list two functions (VGA + audio); Turing RTX 20xx cards add a USB 3.1
+controller (`.2`) and a USB-C UCSI controller (`.3`); muxless mobile
+Optimus cards list one (a 3D controller with no audio silicon on the
+bus). The card's USB function may show `xhci_hcd` until the guest
+starts — `xhci_pci` is built into the kernel, so it claims the device
+before `vfio-pci` loads. That's fine: the managed `<hostdev>` rebinds
+it to `vfio-pci` at guest start.
 
 If it says `nouveau` or `nvidia`, either the initramfs didn't rebuild, the
 IDs are wrong, or the `blacklist` lines didn't take. See doc 09.
